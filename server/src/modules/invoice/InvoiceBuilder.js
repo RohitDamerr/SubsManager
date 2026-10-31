@@ -39,6 +39,10 @@ export class InvoiceBuilder {
 
     // Apply discounts (pull-based): step 1 per-line, step 2 subscription-level.
     discountEngine.apply(draft, issueDate);
+    // Remember the product-rule part before the subscription discount is spread over lines
+    // (redemption records need each rule's own amount).
+    lines.forEach((l) => { l.productDiscountAmount = l.discountAmount || 0; });
+    const subscriptionDiscountAmount = (draft.discountTotal || 0) - lines.reduce((s, l) => s + l.productDiscountAmount, 0);
     this.allocateSubscriptionDiscount(lines, draft.discountTotal || 0);
 
     // Compute tax AFTER discounts, on the discounted amount.
@@ -64,6 +68,8 @@ export class InvoiceBuilder {
       subscriptionId: subscription._id,
       customerId: subscription.customerId,
       customerName: subscription.customerName || '',
+      customerEmail: subscription.customerEmail || '',
+      billingAddress: subscription.billingAddress || '',
       status: 'DRAFT',
       billable: true,
       periodStart,
@@ -81,6 +87,7 @@ export class InvoiceBuilder {
         .filter((l) => l.discountId)
         .map((l) => ({ discountId: l.discountId, productId: l.productId })),
       appliedSubscriptionDiscountId: draft.subscriptionDiscountId || null,
+      subscriptionDiscountAmount,
     };
   }
 

@@ -26,6 +26,11 @@ export class SubscriptionController extends BaseController {
     return this.created(res, sub);
   });
 
+  renew = asyncHandler(async (req, res) => {
+    const sub = await this.subscriptionService.renew(req.params.id, req.user);
+    return this.ok(res, sub);
+  });
+
   transition = asyncHandler(async (req, res) => {
     const sub = await this.subscriptionService.transition(req.params.id, req.body.to, req.user);
     return this.ok(res, sub);

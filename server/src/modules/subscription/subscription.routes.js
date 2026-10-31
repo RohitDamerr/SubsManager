@@ -16,6 +16,9 @@ export function createSubscriptionRouter({ subscriptionController }) {
   router.post('/', authenticate, authorize('ADMIN', 'STAFF'),
     validateBody(createSubscriptionSchema), subscriptionController.create);
 
+  // Renew (extend the term by one more term): Staff, Admin — only if the plan allows it.
+  router.post('/:id/renew', authenticate, authorize('ADMIN', 'STAFF'), subscriptionController.renew);
+
   // Transition: Staff, Admin, Customer (pause/close only for customer).
   router.post('/:id/transition', authenticate, authorize('ADMIN', 'STAFF', 'CUSTOMER'),
     validateBody(transitionSchema), subscriptionController.transition);

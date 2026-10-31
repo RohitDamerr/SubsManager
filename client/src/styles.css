@@ -125,6 +125,7 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr.clickable { cursor: pointer; }
 tbody tr.clickable:hover { background: var(--surface-2); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td:has(> .chip) { white-space: normal; min-width: 160px; }
 .muted { color: var(--text-muted); }
 .subtle { color: var(--text-subtle); font-size: 12px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }

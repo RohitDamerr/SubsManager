@@ -10,8 +10,7 @@
 // 7. Repeat until no due subscriptions remain, then release the lock
 import { ObjectId } from 'mongodb';
 import { CounterService } from '../subscription/CounterService.js';
-
-const PERIOD_DAYS = { DAILY: 1, WEEKLY: 7, MONTHLY: 30, YEARLY: 365 };
+import { addPeriods } from '../../core/BillingPeriod.js';
 
 export class BillingService {
   /**
@@ -57,8 +56,9 @@ export class BillingService {
         totalErrors += result.errors;
       }
 
-      // Nightly maintenance: close autoClose subscriptions past expiryDate.
-      await this.subscriptionRepo.autoCloseExpired();
+      // Nightly maintenance: close expired subscriptions on plans that auto-close.
+      const autoClosePlans = await this.planRepo.col.find({ autoClose: true }, { projection: { _id: 1 } }).toArray();
+      await this.subscriptionRepo.autoCloseExpired(autoClosePlans.map((p) => p._id));
 
       return { ran: true, batches: batch, created: totalCreated, errors: totalErrors };
     } finally {
@@ -95,6 +95,12 @@ export class BillingService {
       }
 
       const periodStart = sub.nextInvoiceDate;
+      // Term is over: stop billing (renewal resumes it).  Clearing nextInvoiceDate also
+      // stops findDue from returning this subscription again, so the run always terminates.
+      if (this.termEnded(sub, periodStart)) {
+        subscriptionUpdates.push({ id: sub._id, nextInvoiceDate: null, lastBilledPeriodEnd: sub.lastBilledPeriodEnd });
+        continue;
+      }
       const periodEnd = this.computePeriodEnd(periodStart, plan.billingPeriod);
       const issueDate = new Date();
 
@@ -141,16 +147,26 @@ export class BillingService {
     }
   }
 
-  /** Set sub.customerName (company name, else user name) for every subscription in the batch. */
+  /** Snapshot customer details (name, email, billing address) onto every subscription in the batch. */
   async attachCustomerNames(subscriptions) {
     const ids = [...new Set(subscriptions.map((s) => s.customerId.toString()))];
     const customers = await this.customerRepo.col.aggregate([
       { $match: { _id: { $in: ids.map((id) => new ObjectId(id)) } } },
-      { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user', pipeline: [{ $project: { name: 1 } }] } },
-      { $project: { companyName: 1, userName: { $arrayElemAt: ['$user.name', 0] } } },
+      { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user', pipeline: [{ $project: { name: 1, email: 1 } }] } },
+      { $project: { companyName: 1, billingAddress: 1, user: { $arrayElemAt: ['$user', 0] } } },
     ]).toArray();
-    const names = new Map(customers.map((c) => [c._id.toString(), c.companyName || c.userName || '']));
-    for (const sub of subscriptions) sub.customerName = names.get(sub.customerId.toString()) || '';
+    const byId = new Map(customers.map((c) => [c._id.toString(), c]));
+    for (const sub of subscriptions) {
+      const c = byId.get(sub.customerId.toString());
+      sub.customerName = c?.companyName || c?.user?.name || '';
+      sub.customerEmail = c?.user?.email || '';
+      sub.billingAddress = c?.billingAddress || '';
+    }
+  }
+
+  /** True when the period would start on/after the subscription's expiry. */
+  termEnded(sub, periodStart) {
+    return Boolean(sub.expiryDate && periodStart >= sub.expiryDate);
   }
 
   async retryIndividually(subscriptions, activeDiscounts, planCache) {
@@ -163,6 +179,10 @@ export class BillingService {
         if (!plan) { errors++; continue; }
 
         const periodStart = sub.nextInvoiceDate;
+        if (this.termEnded(sub, periodStart)) {
+          await this.subscriptionRepo.bulkAdvance([{ id: sub._id, nextInvoiceDate: null, lastBilledPeriodEnd: sub.lastBilledPeriodEnd }]);
+          continue;
+        }
         const periodEnd = this.computePeriodEnd(periodStart, plan.billingPeriod);
         const issueDate = new Date();
 
@@ -176,7 +196,11 @@ export class BillingService {
         await this.txManager.run(async (session) => {
           // Check if an invoice already exists for this period (unique index guard).
           const existing = await this.invoiceRepo.findByPeriod(sub._id, periodStart, { session });
-          if (existing) return; // already billed — skip
+          if (existing) {
+            // Already billed — just move the subscription past this period so it isn't due again.
+            await this.subscriptionRepo.bulkAdvance([{ id: sub._id, nextInvoiceDate: periodEnd, lastBilledPeriodEnd: periodEnd }], session);
+            return;
+          }
 
           await this.invoiceRepo.insertOne(draft, { session });
           await this.claimDiscounts(draft, session);
@@ -207,7 +231,7 @@ export class BillingService {
         await this.discountRepo.addRedemption({
           discountId: new ObjectId(applied.discountId),
           invoiceId: draft._id,
-          amount: draft.lines.find((l) => l.productId?.toString() === applied.productId?.toString())?.discountAmount || 0,
+          amount: draft.lines.find((l) => l.productId?.toString() === applied.productId?.toString())?.productDiscountAmount || 0,
         }, session);
       }
     }
@@ -219,17 +243,14 @@ export class BillingService {
         await this.discountRepo.addRedemption({
           discountId: new ObjectId(draft.appliedSubscriptionDiscountId),
           invoiceId: draft._id,
-          amount: draft.discountTotal - draft.lines.reduce((s, l) => s + (l.discountAmount || 0), 0),
+          amount: draft.subscriptionDiscountAmount || 0,
         }, session);
       }
     }
   }
 
-  /** Compute the end of the billing period. */
+  /** End of the billing period (calendar-aware: monthly = next calendar month). */
   computePeriodEnd(periodStart, billingPeriod) {
-    const end = new Date(periodStart);
-    const days = PERIOD_DAYS[billingPeriod] || 30;
-    end.setDate(end.getDate() + days);
-    return end;
+    return addPeriods(periodStart, billingPeriod, 1);
   }
 }

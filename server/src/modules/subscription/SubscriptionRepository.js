@@ -3,6 +3,13 @@ import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
 import { keysetFilter } from '../../core/Pagination.js';
 
+/** "12" or "sub-12" → prefix match on the unique number index (e.g. ^SUB-000012). */
+export function numberPrefix(q, prefix) {
+  const digits = String(q).toUpperCase().replace(new RegExp(`^${prefix}-?`), '').replace(/D/g, '');
+  if (!digits) return { $regex: `^${prefix}-` };
+  return { $regex: `^${prefix}-0*${digits}` };
+}
+
 // customerId → customers → users, yielding customerName / customerEmail. Use after $limit.
 function customerNameStages() {
   return [
@@ -51,10 +58,11 @@ export class SubscriptionRepository extends BaseRepository {
   /**
    * List with plan name via aggregation — $lookup placed AFTER $limit (no N+1).
    */
-  async listWithPlanName({ limit = 20, cursor, status, customerId } = {}) {
+  async listWithPlanName({ limit = 20, cursor, status, customerId, q } = {}) {
     const filter = {};
     if (status) filter.status = status;
-    if (customerId) filter.customerId = new ObjectId(customerId);
+    if (customerId) filter.customerId = this.toObjectId(customerId);
+    if (q) filter.number = numberPrefix(q, 'SUB');
 
     const keyset = keysetFilter(cursor, 'createdAt');
     if (keyset) Object.assign(filter, keyset);
@@ -166,11 +174,20 @@ export class SubscriptionRepository extends BaseRepository {
     return this.col.bulkWrite(bulkOps, { session });
   }
 
-  /** Close autoClose subscriptions past their expiryDate (nightly job). */
-  async autoCloseExpired() {
+  /** Close subscriptions past their expiryDate whose plan has autoClose (nightly job). */
+  async autoCloseExpired(autoClosePlanIds) {
+    if (!autoClosePlanIds.length) return { modifiedCount: 0 };
     return this.col.updateMany(
-      { status: 'ACTIVE', expiryDate: { $lt: new Date() } },
-      { $set: { status: 'CLOSED', nextInvoiceDate: null, updatedAt: new Date() } }
+      { status: { $in: ['ACTIVE', 'PAUSED'] }, planId: { $in: autoClosePlanIds }, expiryDate: { $lt: new Date() } },
+      { $set: { status: 'CLOSED', nextInvoiceDate: null, closedReason: 'EXPIRED', updatedAt: new Date() } }
+    );
+  }
+
+  /** Renewal — conditional on status so it can't race a transition; counts renewals. */
+  async renew(id, status, set) {
+    return this.col.updateOne(
+      { _id: this.toObjectId(id), status },
+      { $set: { ...set, updatedAt: new Date() }, $inc: { renewalCount: 1 } }
     );
   }
 }
