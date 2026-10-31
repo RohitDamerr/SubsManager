@@ -6,11 +6,12 @@ import { keysetFilter } from '../../core/Pagination.js';
 export class InvoiceRepository extends BaseRepository {
   constructor(db) { super(db, 'invoices'); }
 
-  async list({ limit = 20, cursor, status, customerId, overdue } = {}) {
+  async list({ limit = 20, cursor, status, customerId, overdue, excludeDraft } = {}) {
     const filter = {};
     if (status) filter.status = status;
+    else if (excludeDraft) filter.status = { $ne: 'DRAFT' };
     if (customerId) filter.customerId = new ObjectId(customerId);
-    if (overdue) {
+    if (overdue === 'true' || overdue === true) {
       filter.status = 'CONFIRMED';
       filter.dueDate = { $lt: new Date() };
     }

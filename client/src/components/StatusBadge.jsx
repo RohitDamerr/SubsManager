@@ -1,17 +1,20 @@
 // StatusBadge — single component for subscription and invoice states.
-const STATUS_CLASS = {
-  DRAFT: 'badge-draft',
-  QUOTATION: 'badge-draft',
-  CONFIRMED: 'badge-confirmed',
-  ACTIVE: 'badge-active',
-  PAUSED: 'badge-paused',
-  CLOSED: 'badge-closed',
-  PAID: 'badge-paid',
-  CANCELLED: 'badge-cancelled',
+// Pass `overdue` to show a confirmed invoice past its due date as OVERDUE.
+const STATUS_TONE = {
+  DRAFT: 'gray',
+  QUOTATION: 'blue',
+  CONFIRMED: 'indigo',
+  ACTIVE: 'green',
+  PAUSED: 'amber',
+  CLOSED: 'gray',
+  PAID: 'green',
+  CANCELLED: 'red',
+  OVERDUE: 'red',
 };
 
-export function StatusBadge({ status }) {
+export function StatusBadge({ status, overdue = false }) {
   if (!status) return null;
-  const cls = STATUS_CLASS[status] || 'badge-draft';
-  return <span className={`badge ${cls}`}>{status}</span>;
+  const shown = overdue ? 'OVERDUE' : status;
+  const label = shown.charAt(0) + shown.slice(1).toLowerCase();
+  return <span className={`badge badge-${STATUS_TONE[shown] || 'gray'}`}>{label}</span>;
 }

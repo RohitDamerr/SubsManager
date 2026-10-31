@@ -1,63 +1,65 @@
-// Staff — admin creates staff accounts.  Admin only.
+// Staff — Admin only.  Lists team accounts and creates new Staff or Admin users.
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { auth as authApi } from '../../api/resources.js';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { staff } from '../../api/resources.js';
+import { DataTable } from '../../components/DataTable.jsx';
+import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
+import { useToast } from '../../components/Toast.jsx';
+import { initials } from '../../lib/format.js';
 
 export default function Staff() {
-  const [form, setForm] = useState({ email: '', name: '', password: '', role: 'STAFF' });
-  const [success, setSuccess] = useState('');
-  const [error, setError] = useState('');
-
-  const createMutation = useMutation({
-    mutationFn: authApi.createStaff,
-    onSuccess: () => {
-      setSuccess('Staff account created');
-      setError('');
-      setForm({ email: '', name: '', password: '', role: 'STAFF' });
-    },
-    onError: (err) => {
-      setError(err.response?.data?.error?.message || 'Failed to create staff');
-      setSuccess('');
-    },
-  });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    createMutation.mutate(form);
-  };
+  const [creating, setCreating] = useState(false);
+  const list = useQuery({ queryKey: ['staff'], queryFn: staff.list });
+  const rows = list.data || [];
 
   return (
     <div>
-      <h1 className="page-title">Staff Management</h1>
-      <div className="card" style={{ maxWidth: 500 }}>
-        <div className="card-title">Create Staff Account</div>
-        {success && <div style={{ color: 'var(--success)', marginBottom: 12 }}>{success}</div>}
-        {error && <div className="error-message">{error}</div>}
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Name</label>
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          </div>
-          <div className="form-group">
-            <label>Email</label>
-            <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-          </div>
-          <div className="form-group">
-            <label>Password</label>
-            <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-          </div>
-          <div className="form-group">
-            <label>Role</label>
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option value="STAFF">Staff</option>
-              <option value="ADMIN">Admin</option>
-            </select>
-          </div>
-          <button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Creating…' : 'Create Staff Account'}
-          </button>
-        </form>
-      </div>
+      <PageHeader title="Team" subtitle="Staff run subscriptions and invoices. Admins also manage the catalog, discounts and team." actions={<button onClick={() => setCreating(true)}>+ Add team member</button>} />
+      <Card bodyless>
+        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title="No team members" />}>
+          <DataTable
+            data={rows}
+            columns={[
+              { key: 'name', label: 'Name', render: (u) => <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span className="avatar" style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}>{initials(u.name)}</span>{u.name}</span> },
+              { key: 'email', label: 'Email' },
+              { key: 'role', label: 'Role', render: (u) => <span className={`badge badge-${u.role === 'ADMIN' ? 'indigo' : 'blue'}`}>{u.role === 'ADMIN' ? 'Admin' : 'Staff'}</span> },
+              { key: 'isActive', label: 'Status', render: (u) => <span className={`badge badge-${u.isActive ? 'green' : 'gray'}`}>{u.isActive ? 'Active' : 'Disabled'}</span> },
+            ]}
+          />
+        </QueryState>
+      </Card>
+      {creating && <CreateStaff onClose={() => setCreating(false)} />}
     </div>
+  );
+}
+
+function CreateStaff({ onClose }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'STAFF' });
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const create = useMutation({
+    mutationFn: staff.create,
+    onSuccess: (u) => { queryClient.invalidateQueries({ queryKey: ['staff'] }); toast(`${u.name} added`); onClose(); },
+  });
+
+  return (
+    <Modal title="Add team member" onClose={onClose}>
+      <ErrorAlert error={create.error} />
+      <form onSubmit={(e) => { e.preventDefault(); create.mutate(form); }}>
+        <Field label="Name"><input value={form.name} onChange={set('name')} required autoFocus /></Field>
+        <Field label="Email"><input type="email" value={form.email} onChange={set('email')} required /></Field>
+        <div className="form-grid">
+          <Field label="Temporary password" hint="8+ chars, upper, lower, special"><input type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required /></Field>
+          <Field label="Role">
+            <select value={form.role} onChange={set('role')}><option value="STAFF">Staff</option><option value="ADMIN">Admin</option></select>
+          </Field>
+        </div>
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" disabled={create.isPending}>{create.isPending ? 'Creating…' : 'Create account'}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }

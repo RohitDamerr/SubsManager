@@ -1,110 +1,107 @@
-// Quotation templates — list + create form.  Admin and Staff.
+// Quotation templates — Admin & Staff create/edit.  A template is a plan + preset lines.
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { templates, plans, products } from '../../api/resources.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
+import { can } from '../../auth/roles.js';
+import { DataTable } from '../../components/DataTable.jsx';
+import { LineEditor } from '../../components/LineEditor.jsx';
+import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
+import { useToast } from '../../components/Toast.jsx';
+import { PERIOD_LABEL } from '../../lib/format.js';
 
 export default function Templates() {
-  const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', planId: '', validityDays: 30, lines: [] });
-  const [lineDraft, setLineDraft] = useState({ productId: '', quantity: 1 });
+  const { user } = useAuth();
+  const [editing, setEditing] = useState(null); // null | 'new' | template
+  const list = useQuery({ queryKey: ['templates'], queryFn: () => templates.list() });
+  const plansQ = useQuery({ queryKey: ['plans'], queryFn: () => plans.list({ limit: 100 }) });
+  const productsQ = useQuery({ queryKey: ['products', 'all'], queryFn: () => products.list({ limit: 100 }) });
 
-  const { data } = useQuery({ queryKey: ['templates'], queryFn: () => templates.list({ limit: 100 }) });
-  const { data: plansData } = useQuery({ queryKey: ['plans'], queryFn: () => plans.list({ limit: 100 }) });
-  const { data: productsData } = useQuery({ queryKey: ['products'], queryFn: () => products.list({ limit: 100 }) });
-
-  const createMutation = useMutation({
-    mutationFn: templates.create,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['templates']);
-      setShowForm(false);
-      setForm({ name: '', planId: '', validityDays: 30, lines: [] });
-    },
-  });
-
-  const addLine = () => {
-    if (!lineDraft.productId) return;
-    setForm({ ...form, lines: [...form.lines, lineDraft] });
-    setLineDraft({ productId: '', quantity: 1 });
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    createMutation.mutate(form);
-  };
+  const planById = new Map((plansQ.data?.data || []).map((p) => [p._id, p]));
+  const productById = new Map((productsQ.data?.data || []).map((p) => [p._id, p]));
+  const rows = list.data?.data || [];
+  const writable = can(user, 'template:write');
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1 className="page-title" style={{ margin: 0 }}>Quotation Templates</h1>
-        <button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : 'New Template'}</button>
-      </div>
+      <PageHeader
+        title="Quotation templates"
+        subtitle="Reusable plan + product bundles for creating subscriptions quickly."
+        actions={writable && <button onClick={() => setEditing('new')}>+ New template</button>}
+      />
+      <Card bodyless>
+        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title="No templates yet" />}>
+          <DataTable
+            data={rows}
+            onRowClick={writable ? (t) => setEditing(t) : undefined}
+            columns={[
+              { key: 'name', label: 'Name', render: (t) => <span className="strong">{t.name}</span> },
+              { key: 'plan', label: 'Plan', render: (t) => { const p = planById.get(t.planId); return p ? `${p.name} (${PERIOD_LABEL[p.billingPeriod]})` : '—'; } },
+              { key: 'lines', label: 'Products', render: (t) => (t.lines || []).map((l, i) => <span key={i} className="chip">{productById.get(l.productId)?.name || 'Product'} × {l.quantity}</span>) },
+              { key: 'validityDays', label: 'Valid for', render: (t) => `${t.validityDays} days` },
+            ]}
+          />
+        </QueryState>
+      </Card>
 
-      {showForm && (
-        <div className="card">
-          {createMutation.isError && <div className="error-message">{createMutation.error.response?.data?.error?.message}</div>}
-          <form onSubmit={handleSubmit}>
-            <div className="row">
-              <div className="col form-group">
-                <label>Name</label>
-                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-              </div>
-              <div className="col form-group">
-                <label>Plan</label>
-                <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} required>
-                  <option value="">Select plan…</option>
-                  {(plansData?.data || []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
-                </select>
-              </div>
-              <div className="col form-group">
-                <label>Validity (days)</label>
-                <input type="number" value={form.validityDays} onChange={(e) => setForm({ ...form, validityDays: parseInt(e.target.value) })} required />
-              </div>
-            </div>
-
-            <div className="card-title">Lines</div>
-            {form.lines.map((l, i) => (
-              <div key={i} style={{ marginBottom: 8, fontSize: 14 }}>
-                Product: {l.productId} × {l.quantity}
-                <button type="button" className="secondary" style={{ marginLeft: 12, padding: '2px 8px' }}
-                  onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}>Remove</button>
-              </div>
-            ))}
-            <div className="row">
-              <div className="col form-group">
-                <label>Product</label>
-                <select value={lineDraft.productId} onChange={(e) => setLineDraft({ ...lineDraft, productId: e.target.value })}>
-                  <option value="">Select product…</option>
-                  {(productsData?.data || []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
-                </select>
-              </div>
-              <div className="col form-group">
-                <label>Quantity</label>
-                <input type="number" min="1" value={lineDraft.quantity} onChange={(e) => setLineDraft({ ...lineDraft, quantity: parseInt(e.target.value) })} />
-              </div>
-              <button type="button" onClick={addLine} style={{ alignSelf: 'flex-end' }}>Add Line</button>
-            </div>
-
-            <button type="submit">Create Template</button>
-          </form>
-        </div>
+      {editing && (
+        <TemplateForm
+          template={editing === 'new' ? null : editing}
+          plans={plansQ.data?.data || []}
+          products={productsQ.data?.data || []}
+          onClose={() => setEditing(null)}
+        />
       )}
-
-      <div className="card">
-        <table>
-          <thead><tr><th>Name</th><th>Plan</th><th>Validity</th><th>Lines</th></tr></thead>
-          <tbody>
-            {(data?.data || []).map((t) => (
-              <tr key={t._id}>
-                <td>{t.name}</td>
-                <td>{t.planId}</td>
-                <td>{t.validityDays} days</td>
-                <td>{t.lines?.length || 0}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
+  );
+}
+
+function TemplateForm({ template, plans: planList, products: productList, onClose }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [form, setForm] = useState({
+    name: template?.name || '',
+    planId: template?.planId || '',
+    validityDays: template?.validityDays || 30,
+    lines: (template?.lines || []).map((l) => ({ productId: l.productId, quantity: l.quantity, ...(l.variantId ? { variantId: l.variantId } : {}) })),
+  });
+
+  const save = useMutation({
+    mutationFn: (b) => (template ? templates.update(template._id, b) : templates.create(b)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      toast(template ? 'Template updated' : 'Template created');
+      onClose();
+    },
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    save.mutate({ ...form, validityDays: Number(form.validityDays) });
+  };
+
+  return (
+    <Modal title={template ? `Edit ${template.name}` : 'New quotation template'} onClose={onClose} wide>
+      <ErrorAlert error={save.error} />
+      <form onSubmit={handleSubmit}>
+        <div className="form-grid">
+          <Field label="Name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus /></Field>
+          <Field label="Plan">
+            <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} required>
+              <option value="">Select plan…</option>
+              {planList.map((p) => <option key={p._id} value={p._id}>{p.name} ({PERIOD_LABEL[p.billingPeriod]})</option>)}
+            </select>
+          </Field>
+          <Field label="Quotation valid for (days)"><input type="number" min="1" value={form.validityDays} onChange={(e) => setForm({ ...form, validityDays: e.target.value })} required /></Field>
+        </div>
+        <Field label="Products">
+          <LineEditor products={productList} value={form.lines} onChange={(lines) => setForm({ ...form, lines })} />
+        </Field>
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" disabled={!form.lines.length || save.isPending}>{save.isPending ? 'Saving…' : 'Save template'}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -1,67 +1,56 @@
-// Layout — sidebar navigation generated from the user's role.
-import { NavLink, useNavigate } from 'react-router-dom';
+// Layout — sidebar navigation generated from the user's role, page content via <Outlet />.
+import { useState, useEffect } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { navFor, ROLE_LABEL } from '../auth/roles.js';
+import { initials } from '../lib/format.js';
 
-const NAV_BY_ROLE = {
-  ADMIN: [
-    { to: '/', label: 'Dashboard' },
-    { to: '/products', label: 'Products' },
-    { to: '/plans', label: 'Plans' },
-    { to: '/taxes', label: 'Taxes' },
-    { to: '/discounts', label: 'Discounts' },
-    { to: '/templates', label: 'Templates' },
-    { to: '/subscriptions', label: 'Subscriptions' },
-    { to: '/invoices', label: 'Invoices' },
-    { to: '/staff', label: 'Staff' },
-  ],
-  STAFF: [
-    { to: '/', label: 'Dashboard' },
-    { to: '/products', label: 'Products' },
-    { to: '/templates', label: 'Templates' },
-    { to: '/subscriptions', label: 'Subscriptions' },
-    { to: '/invoices', label: 'Invoices' },
-  ],
-  CUSTOMER: [
-    { to: '/', label: 'Dashboard' },
-    { to: '/my-subscriptions', label: 'My Subscriptions' },
-    { to: '/my-invoices', label: 'My Invoices' },
-  ],
-};
-
-export function Layout({ children }) {
+export function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const navItems = NAV_BY_ROLE[user?.role] || [];
+  const location = useLocation();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => setOpen(false), [location.pathname]);
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
 
   return (
     <div className="layout">
-      <aside className="sidebar">
-        <div className="sidebar-brand">Brightloop</div>
+      <aside className={`sidebar ${open ? 'open' : ''}`}>
+        <div className="sidebar-brand"><span className="brand-mark">b</span>Brightloop</div>
         <nav>
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) => (isActive ? 'active' : '')}
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          {navFor(user.role).map((item) =>
+            item.section ? (
+              <div key={item.section} className="nav-section">{item.section}</div>
+            ) : (
+              <NavLink key={item.to} to={item.to} className={({ isActive }) => (isActive ? 'active' : '')}>
+                <span className="nav-icon">{item.icon}</span>{item.label}
+              </NavLink>
+            )
+          )}
         </nav>
-        <div style={{ padding: '20px', marginTop: 'auto', borderTop: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 13, marginBottom: 8 }}>{user?.email} ({user?.role})</div>
-          <button className="secondary" onClick={handleLogout} style={{ width: '100%' }}>
-            Log out
-          </button>
+        <div className="sidebar-user">
+          <div className="avatar">{initials(user.name)}</div>
+          <div className="sidebar-user-info">
+            <div className="sidebar-user-name" title={user.email}>{user.name}</div>
+            <div className="sidebar-user-role">{ROLE_LABEL[user.role]}</div>
+          </div>
+          <button className="ghost sm" title="Account" onClick={() => navigate('/account')}>⚙</button>
+          <button className="ghost sm" title="Log out" onClick={handleLogout}>⏻</button>
         </div>
       </aside>
-      <main className="main">{children}</main>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="topbar-mobile">
+          <button className="secondary sm" onClick={() => setOpen(!open)} aria-label="Menu">☰</button>
+          <strong>Brightloop</strong>
+        </div>
+        <main className="main"><Outlet /></main>
+      </div>
     </div>
   );
 }

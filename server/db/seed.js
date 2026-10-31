@@ -179,6 +179,7 @@ async function main() {
       type: 'FIXED',
       value: 500000,
       scope: 'SUBSCRIPTION',
+      minPurchase: 5000000, // ₹50000 in paise — matches the rule's name
       startDate: new Date('2025-01-01'),
       endDate: new Date('2026-12-31'),
       usageLimit: 100,

@@ -25,6 +25,11 @@ export class UserRepository extends BaseRepository {
     return { ...doc, _id: result.insertedId };
   }
 
+  async listByRoles(roles) {
+    return this.col.find({ role: { $in: roles } }, { projection: { passwordHash: 0, resetToken: 0 } })
+      .sort({ createdAt: -1 }).toArray();
+  }
+
   async updatePassword(id, passwordHash, options = {}) {
     return this.col.updateOne(
       { _id: new ObjectId(id) },

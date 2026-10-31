@@ -5,19 +5,17 @@ export class ReportService {
   }
 
   async summary() {
-    const [activeSubscriptions, outstanding, overdue, mrr] = await Promise.all([
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [activeSubscriptions, outstanding, overdueCount, mrr, revenueThisMonth] = await Promise.all([
       this.reportRepo.activeSubscriptions(),
       this.reportRepo.outstanding(),
-      this.reportRepo.overdue({ limit: 10 }),
+      this.reportRepo.overdueCount(),
       this.reportRepo.mrr(),
+      this.reportRepo.revenueReceived(monthStart, now),
     ]);
 
-    return {
-      activeSubscriptions,
-      outstanding,
-      overdueCount: overdue.length,
-      mrr,
-    };
+    return { activeSubscriptions, outstanding, overdueCount, mrr, revenueThisMonth };
   }
 
   async revenue({ from, to, groupBy }) {

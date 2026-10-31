@@ -1,7 +1,10 @@
-// App — all routes.  Public routes are standalone; protected routes use the Layout.
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { ProtectedRoute } from './auth/ProtectedRoute.jsx';
+// App — all routes.  Every protected route lists its roles from ACCESS (auth/roles.js),
+// the same table the sidebar is built from, so navigation and guards can't drift apart.
+import { Routes, Route } from 'react-router-dom';
+import { RequireAuth, PublicOnly, RoleHome } from './auth/ProtectedRoute.jsx';
+import { ACCESS } from './auth/roles.js';
 import { Layout } from './components/Layout.jsx';
+import { NotFound } from './pages/Forbidden.jsx';
 import Login from './pages/public/Login.jsx';
 import Register from './pages/public/Register.jsx';
 import ForgotPassword from './pages/public/ForgotPassword.jsx';
@@ -17,49 +20,56 @@ import Subscriptions from './pages/staff/Subscriptions.jsx';
 import SubscriptionDetail from './pages/staff/SubscriptionDetail.jsx';
 import Invoices from './pages/staff/Invoices.jsx';
 import InvoiceDetail from './pages/staff/InvoiceDetail.jsx';
+import PortalHome from './pages/portal/PortalHome.jsx';
 import MySubscriptions from './pages/portal/MySubscriptions.jsx';
 import MyInvoices from './pages/portal/MyInvoices.jsx';
+import Account from './pages/account/Account.jsx';
+
+const guarded = (key, element) => ({ key, element });
+
+const PAGES = [
+  ['/dashboard', guarded('dashboard', <Dashboard />)],
+  ['/portal', guarded('portal', <PortalHome />)],
+  ['/subscriptions', guarded('subscriptions', <Subscriptions />)],
+  ['/subscriptions/:id', guarded('subscriptionDetail', <SubscriptionDetail />)],
+  ['/my-subscriptions', guarded('mySubscriptions', <MySubscriptions />)],
+  ['/invoices', guarded('invoices', <Invoices />)],
+  ['/invoices/:id', guarded('invoiceDetail', <InvoiceDetail />)],
+  ['/my-invoices', guarded('myInvoices', <MyInvoices />)],
+  ['/templates', guarded('templates', <Templates />)],
+  ['/products', guarded('products', <Products />)],
+  ['/plans', guarded('plans', <Plans />)],
+  ['/taxes', guarded('taxes', <Taxes />)],
+  ['/discounts', guarded('discounts', <Discounts />)],
+  ['/staff', guarded('staff', <Staff />)],
+  ['/account', guarded('account', <Account />)],
+];
 
 export default function App() {
   return (
     <Routes>
-      {/* Public */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
+      {/* Public — signed-in users are bounced to their home */}
+      <Route element={<PublicOnly />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+      </Route>
+      {/* Reset links must work even if someone else is signed in on this browser */}
       <Route path="/reset-password" element={<ResetPassword />} />
 
-      {/* Protected — shared layout */}
-      <Route element={<ProtectedRoute />}>
+      <Route path="/" element={<RoleHome />} />
+
+      {/* Protected — any signed-in user gets the layout; each page then checks its roles */}
+      <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
-          {/* Dashboard — all roles */}
-          <Route path="/" element={<Dashboard />} />
-
-          {/* Customer portal */}
-          <Route path="/my-subscriptions" element={<MySubscriptions />} />
-          <Route path="/my-invoices" element={<MyInvoices />} />
-
-          {/* Staff & Admin */}
-          <Route element={<ProtectedRoute roles={['ADMIN', 'STAFF']} />}>
-            <Route path="/templates" element={<Templates />} />
-            <Route path="/subscriptions" element={<Subscriptions />} />
-            <Route path="/subscriptions/:id" element={<SubscriptionDetail />} />
-            <Route path="/invoices" element={<Invoices />} />
-            <Route path="/invoices/:id" element={<InvoiceDetail />} />
-          </Route>
-
-          {/* Admin only */}
-          <Route element={<ProtectedRoute roles={['ADMIN']} />}>
-            <Route path="/products" element={<Products />} />
-            <Route path="/plans" element={<Plans />} />
-            <Route path="/taxes" element={<Taxes />} />
-            <Route path="/discounts" element={<Discounts />} />
-            <Route path="/staff" element={<Staff />} />
-          </Route>
+          {PAGES.map(([path, { key, element }]) => (
+            <Route key={path} element={<RequireAuth roles={ACCESS[key]} />}>
+              <Route path={path} element={element} />
+            </Route>
+          ))}
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
-
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

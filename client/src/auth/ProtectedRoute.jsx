@@ -1,16 +1,35 @@
-// ProtectedRoute — guards routes by role.  Redirects to login if not authenticated.
-import { Navigate, Outlet } from 'react-router-dom';
+// Route guards.
+//  RequireAuth  — not signed in → /login (remembering where you were); wrong role → 403 page.
+//  PublicOnly   — signed-in users visiting /login or /register go to their home instead.
+//  RoleHome     — "/" sends each role to its landing page.
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
+import { hasRole, homeFor } from './roles.js';
+import { Forbidden } from '../pages/Forbidden.jsx';
 
-export function ProtectedRoute({ roles }) {
+function FullScreenLoader() {
+  return <div className="center-screen"><div className="spinner" /></div>;
+}
+
+export function RequireAuth({ roles }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading…</div>;
-  if (!user) return <Navigate to="/login" replace />;
-
-  if (roles && !roles.includes(user.role)) {
-    return <Navigate to="/" replace />;
-  }
-
+  if (loading) return <FullScreenLoader />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (!hasRole(user, roles)) return <Forbidden />;
   return <Outlet />;
+}
+
+export function PublicOnly() {
+  const { user, loading } = useAuth();
+  if (loading) return <FullScreenLoader />;
+  if (user) return <Navigate to={homeFor(user.role)} replace />;
+  return <Outlet />;
+}
+
+export function RoleHome() {
+  const { user, loading } = useAuth();
+  if (loading) return <FullScreenLoader />;
+  return <Navigate to={user ? homeFor(user.role) : '/login'} replace />;
 }

@@ -33,6 +33,16 @@ export class AuthController extends BaseController {
     return this.created(res, this.publicUser(user));
   });
 
+  listStaff = asyncHandler(async (req, res) => {
+    const users = await this.authService.listStaff();
+    return this.ok(res, users.map((u) => this.publicUser(u)));
+  });
+
+  listCustomers = asyncHandler(async (req, res) => {
+    const customers = await this.authService.listCustomers(req.query);
+    return this.ok(res, customers);
+  });
+
   forgotPassword = asyncHandler(async (req, res) => {
     await this.authService.forgotPassword(req.body.email);
     return this.ok(res, { sent: true });

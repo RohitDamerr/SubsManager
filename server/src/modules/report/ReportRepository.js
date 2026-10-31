@@ -32,6 +32,11 @@ export class ReportRepository {
     return result[0]?.total || 0;
   }
 
+  /** Count of overdue invoices — same filter as the list, served by the dueDate partial index. */
+  async overdueCount() {
+    return this.invoices.countDocuments({ status: 'CONFIRMED', dueDate: { $lt: new Date() } });
+  }
+
   /** Overdue invoices with customer details. */
   async overdue({ limit = 50 } = {}) {
     const today = new Date();
@@ -48,7 +53,8 @@ export class ReportRepository {
           pipeline: [{ $project: { companyName: 1 } }],
         },
       },
-      { $addFields: { customerName: { $arrayElemAt: ['$customer.companyName', 0] } } },
+      // Prefer the snapshot on the invoice; fall back to the customer's company name.
+      { $addFields: { customerName: { $ifNull: ['$customerName', { $arrayElemAt: ['$customer.companyName', 0] }] } } },
       { $project: { customer: 0 } },
     ]).toArray();
 

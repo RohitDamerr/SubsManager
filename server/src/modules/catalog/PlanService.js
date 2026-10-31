@@ -7,7 +7,7 @@ export class PlanService {
   }
 
   async list(query) {
-    const limit = query.limit || 50;
+    const limit = Math.min(Number(query.limit) || 50, 100); // query strings arrive as text
     const rows = await this.planRepo.list({ ...query, limit });
     const hasMore = rows.length > limit;
     const data = hasMore ? rows.slice(0, limit) : rows;

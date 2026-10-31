@@ -29,8 +29,11 @@ export function createApp(routers) {
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
   // API v1 routes
-  app.use('/api/v1/auth', authLimiter, routers.auth);
-  app.use('/api/v1/users', authLimiter, routers.auth); // /users/staff lives here  app.use('/api/v1/products', routers.products);
+  // Auth router defines full /auth/* and /users/* paths itself
+  // Throttle only the credential endpoints; /auth/me runs on every page load and must not count.
+  app.use(['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/forgot-password', '/api/v1/auth/reset-password'], authLimiter);
+  app.use('/api/v1', routers.auth);
+  app.use('/api/v1/products', routers.products);
   app.use('/api/v1/plans', routers.plans);
   app.use('/api/v1/taxes', routers.taxes);
   app.use('/api/v1/discounts', routers.discounts);

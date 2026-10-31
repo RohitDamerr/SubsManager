@@ -17,7 +17,8 @@ export class BillingService {
   /**
    * @param {{ subscriptionRepo, invoiceRepo, discountRepo, invoiceBuilder, txManager, billingLock, planRepo }} deps
    */
-  constructor({ subscriptionRepo, invoiceRepo, discountRepo, invoiceBuilder, txManager, billingLock, planRepo }) {
+  constructor({ subscriptionRepo, invoiceRepo, discountRepo, customerRepo, invoiceBuilder, txManager, billingLock, planRepo }) {
+    this.customerRepo = customerRepo;
     this.subscriptionRepo = subscriptionRepo;
     this.invoiceRepo = invoiceRepo;
     this.discountRepo = discountRepo;
@@ -79,6 +80,9 @@ export class BillingService {
       plans.forEach((p) => planCache.set(p._id.toString(), p));
     }
 
+    // Snapshot customer names onto the subscriptions (one aggregation for the batch).
+    await this.attachCustomerNames(subscriptions);
+
     // Build all invoice drafts in memory.
     const drafts = [];
     const subscriptionUpdates = [];
@@ -135,6 +139,18 @@ export class BillingService {
       console.warn(`[billing] batch failed (${err.message}), retrying individually`);
       return this.retryIndividually(subscriptions, activeDiscounts, planCache);
     }
+  }
+
+  /** Set sub.customerName (company name, else user name) for every subscription in the batch. */
+  async attachCustomerNames(subscriptions) {
+    const ids = [...new Set(subscriptions.map((s) => s.customerId.toString()))];
+    const customers = await this.customerRepo.col.aggregate([
+      { $match: { _id: { $in: ids.map((id) => new ObjectId(id)) } } },
+      { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user', pipeline: [{ $project: { name: 1 } }] } },
+      { $project: { companyName: 1, userName: { $arrayElemAt: ['$user.name', 0] } } },
+    ]).toArray();
+    const names = new Map(customers.map((c) => [c._id.toString(), c.companyName || c.userName || '']));
+    for (const sub of subscriptions) sub.customerName = names.get(sub.customerId.toString()) || '';
   }
 
   async retryIndividually(subscriptions, activeDiscounts, planCache) {

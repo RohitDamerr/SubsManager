@@ -91,6 +91,14 @@ export class AuthService {
     }
   }
 
+  async listStaff() {
+    return this.userRepo.listByRoles(['ADMIN', 'STAFF']);
+  }
+
+  async listCustomers(query) {
+    return this.customerRepo.listWithUser({ q: query.q, limit: Math.min(Number(query.limit) || 100, 200) });
+  }
+
   async forgotPassword(email) {
     email = email.toLowerCase();
     const user = await this.userRepo.findByEmail(email);
@@ -138,7 +146,8 @@ export class AuthService {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
     const match = await bcrypt.compare(currentPassword, user.passwordHash);
-    if (!match) throw new UnauthorizedError('Current password is incorrect');
+    // 400, not 401: a wrong current password must not log the user out.
+    if (!match) throw new ValidationError('Current password is incorrect');
     const passwordHash = await bcrypt.hash(newPassword, config.bcryptRounds);
     await this.userRepo.updatePassword(userId, passwordHash);
     return { user };

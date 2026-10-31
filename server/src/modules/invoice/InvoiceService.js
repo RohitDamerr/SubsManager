@@ -26,9 +26,12 @@ export class InvoiceService {
     const limit = Number(query.limit) || 20;
     const filter = { ...query, limit };
     if (actor.role === 'CUSTOMER') {
-      const customer = await this.invoiceRepo.col.client.db().collection('customers').findOne({ userId: actor._id });
+      const customer = await this.customerRepo.findByUserId(actor._id);
       if (!customer) return { data: [], hasMore: false };
       filter.customerId = customer._id.toString();
+      // Drafts are internal until staff confirm them.
+      if (filter.status === 'DRAFT') return { data: [], hasMore: false };
+      filter.excludeDraft = true;
     }
     const rows = await this.invoiceRepo.list(filter);
     const hasMore = rows.length > limit;
@@ -40,10 +43,13 @@ export class InvoiceService {
     const invoice = await this.invoiceRepo.findById(id);
     if (!invoice) throw new NotFoundError('Invoice');
     await this.assertCanAccess(invoice, actor);
-    // Add payments (one find — two queries total for detail).
-    const payments = await this.invoiceRepo.col.client.db().collection('payments')
-      .find({ invoiceId: new ObjectId(id) }).sort({ paidOn: -1 }).toArray();
-    return { ...invoice, payments };
+    // Add payments and the parent subscription number (fixed small number of queries).
+    const db = this.invoiceRepo.col.client.db();
+    const [payments, sub] = await Promise.all([
+      db.collection('payments').find({ invoiceId: new ObjectId(id) }).sort({ paidOn: -1 }).toArray(),
+      this.subscriptionRepo.findById(invoice.subscriptionId, { projection: { number: 1 } }),
+    ]);
+    return { ...invoice, payments, subscriptionNumber: sub?.number || null };
   }
 
   /** Confirm: DRAFT → CONFIRMED, assign final invoice number. */
@@ -179,6 +185,7 @@ export class InvoiceService {
       if (!customer || customer._id.toString() !== invoice.customerId.toString()) {
         throw new ForbiddenError('You can only access your own invoices');
       }
+      if (invoice.status === 'DRAFT') throw new NotFoundError('Invoice');
     }
   }
 }

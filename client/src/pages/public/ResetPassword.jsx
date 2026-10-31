@@ -1,42 +1,47 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { auth as authApi } from '../../api/resources.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
+import { ErrorAlert, Field } from '../../components/ui.jsx';
+import { AuthShell } from './AuthShell.jsx';
 
 export default function ResetPassword() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [token, setToken] = useState(params.get('token') || '');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setError(null);
+    setBusy(true);
     try {
       await authApi.resetPassword({ token, password });
-      navigate('/login');
+      if (user) logout(); // a different account may be signed in on this browser
+      navigate('/login', { replace: true, state: { reset: true } });
     } catch (err) {
-      setError(err.response?.data?.error?.message || 'Reset failed');
+      setError(err);
+      setBusy(false);
     }
   };
 
   return (
-    <div className="login-container">
-      <div className="card login-card">
-        <h2>Set a new password</h2>
-        {error && <div className="error-message">{error}</div>}
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Reset token</label>
+    <AuthShell title="Set a new password" footer={<Link to="/login">← Back to sign in</Link>}>
+      <ErrorAlert error={error} fallback="Reset failed" />
+      <form onSubmit={handleSubmit}>
+        {!params.get('token') && (
+          <Field label="Reset token" hint="Paste the token from the email link.">
             <input value={token} onChange={(e) => setToken(e.target.value)} required />
-          </div>
-          <div className="form-group">
-            <label>New password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </div>
-          <button type="submit" style={{ width: '100%' }}>Reset password</button>
-        </form>
-      </div>
-    </div>
+          </Field>
+        )}
+        <Field label="New password" hint="More than 8 characters, with upper and lower case letters and a special character.">
+          <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
+        </Field>
+        <button type="submit" className="block" disabled={busy}>{busy ? 'Saving…' : 'Reset password'}</button>
+      </form>
+    </AuthShell>
   );
 }

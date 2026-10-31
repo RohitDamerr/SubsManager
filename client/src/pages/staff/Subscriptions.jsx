@@ -1,98 +1,165 @@
-// Subscriptions list — Staff and Admin.  Create with template or lines.
+// Subscriptions — Staff & Admin.  Filterable list with keyset "load more", plus create.
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { subscriptions, plans, templates } from '../../api/resources.js';
+import { useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { subscriptions, plans, templates, products, customers } from '../../api/resources.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
+import { can } from '../../auth/roles.js';
+import { useCursorList } from '../../hooks/useCursorList.js';
+import { DataTable } from '../../components/DataTable.jsx';
+import { LineEditor } from '../../components/LineEditor.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { MoneyText } from '../../components/MoneyText.jsx';
+import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
+import { useToast } from '../../components/Toast.jsx';
+import { addDays, dateInput, formatDate, PERIOD_LABEL } from '../../lib/format.js';
+
+const STATUSES = ['', 'DRAFT', 'QUOTATION', 'CONFIRMED', 'ACTIVE', 'PAUSED', 'CLOSED'];
 
 export default function Subscriptions() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [status, setStatus] = useState('');
+  const [creating, setCreating] = useState(false);
+  const list = useCursorList(['subscriptions', 'all'], subscriptions.list, { limit: 20, ...(status ? { status } : {}) });
+
+  return (
+    <div>
+      <PageHeader
+        title="Subscriptions"
+        subtitle="Draft → Quotation → Confirmed → Active. Active subscriptions are billed automatically."
+        actions={can(user, 'subscription:create') && <button onClick={() => setCreating(true)}>+ New subscription</button>}
+      />
+
+      <Card
+        bodyless
+        title={
+          <div className="tabs">
+            {STATUSES.map((s) => (
+              <button key={s} className={`tab ${status === s ? 'active' : ''}`} onClick={() => setStatus(s)}>
+                {s ? s.charAt(0) + s.slice(1).toLowerCase() : 'All'}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title="No subscriptions">{status ? 'Nothing in this state.' : 'Create the first one to start billing.'}</Empty>}>
+          <DataTable
+            data={list.rows}
+            onRowClick={(s) => navigate(`/subscriptions/${s._id}`)}
+            columns={[
+              { key: 'number', label: 'Number', render: (s) => <span className="strong">{s.number}</span> },
+              { key: 'customer', label: 'Customer', render: (s) => <>{s.customerName || '—'}<div className="subtle">{s.customerEmail}</div></> },
+              { key: 'plan', label: 'Plan', render: (s) => <>{s.planName || '—'}<div className="subtle">{PERIOD_LABEL[s.billingPeriod]}</div></> },
+              { key: 'status', label: 'Status', render: (s) => <StatusBadge status={s.status} /> },
+              { key: 'next', label: 'Next invoice', render: (s) => formatDate(s.nextInvoiceDate) },
+              { key: 'mrr', label: 'Per month', align: 'right', render: (s) => <MoneyText amount={s.monthlyAmount} /> },
+            ]}
+          />
+          {list.hasNextPage && (
+            <div className="load-more"><button className="secondary sm" onClick={() => list.fetchNextPage()} disabled={list.isFetchingNextPage}>{list.isFetchingNextPage ? 'Loading…' : 'Load more'}</button></div>
+          )}
+        </QueryState>
+      </Card>
+
+      {creating && <CreateSubscription onClose={() => setCreating(false)} onCreated={(s) => navigate(`/subscriptions/${s._id}`)} />}
+    </div>
+  );
+}
+
+function CreateSubscription({ onClose, onCreated }) {
   const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ customerId: '', planId: '', templateId: '', startDate: new Date().toISOString().slice(0, 10) });
+  const toast = useToast();
+  const today = new Date();
+  const [form, setForm] = useState({
+    customerId: '', planId: '', source: 'template', templateId: '', lines: [],
+    startDate: dateInput(today), expiryDate: dateInput(addDays(today, 365)), paymentTermsDays: 30,
+  });
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  const { data } = useQuery({ queryKey: ['subscriptions'], queryFn: () => subscriptions.list({ limit: 50 }) });
-  const { data: plansData } = useQuery({ queryKey: ['plans'], queryFn: () => plans.list({ limit: 100 }) });
-  const { data: templatesData } = useQuery({ queryKey: ['templates'], queryFn: () => templates.list({ limit: 100 }) });
+  const customersQ = useQuery({ queryKey: ['customers'], queryFn: () => customers.list({ limit: 200 }) });
+  const plansQ = useQuery({ queryKey: ['plans'], queryFn: () => plans.list({ limit: 100 }) });
+  const templatesQ = useQuery({ queryKey: ['templates'], queryFn: () => templates.list() });
+  const productsQ = useQuery({ queryKey: ['products', 'all'], queryFn: () => products.list({ limit: 100 }) });
 
-  const createMutation = useMutation({
+  const create = useMutation({
     mutationFn: subscriptions.create,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['subscriptions']);
-      setShowForm(false);
+    onSuccess: (sub) => {
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      toast(`${sub.number} created as a draft`);
+      onCreated(sub);
     },
   });
+
+  // Picking a template also picks its plan.
+  const pickTemplate = (e) => {
+    const t = templatesQ.data?.data.find((x) => x._id === e.target.value);
+    setForm({ ...form, templateId: e.target.value, planId: t?.planId || form.planId });
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const payload = {
       customerId: form.customerId,
       planId: form.planId,
-      startDate: new Date(form.startDate),
-      ...(form.templateId ? { templateId: form.templateId } : {}),
+      startDate: new Date(form.startDate).toISOString(),
+      paymentTermsDays: Number(form.paymentTermsDays),
     };
-    createMutation.mutate(payload);
+    if (form.expiryDate) payload.expiryDate = new Date(form.expiryDate).toISOString();
+    if (form.source === 'template') payload.templateId = form.templateId;
+    else payload.lines = form.lines;
+    create.mutate(payload);
   };
 
+  const ready = form.customerId && form.planId && (form.source === 'template' ? form.templateId : form.lines.length);
+
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1 className="page-title" style={{ margin: 0 }}>Subscriptions</h1>
-        <button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : 'New Subscription'}</button>
-      </div>
-
-      {showForm && (
-        <div className="card">
-          {createMutation.isError && <div className="error-message">{createMutation.error.response?.data?.error?.message}</div>}
-          <form onSubmit={handleSubmit}>
-            <div className="row">
-              <div className="col form-group">
-                <label>Customer ID</label>
-                <input value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })} required />
-              </div>
-              <div className="col form-group">
-                <label>Plan</label>
-                <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} required>
-                  <option value="">Select plan…</option>
-                  {(plansData?.data || []).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="row">
-              <div className="col form-group">
-                <label>Template (optional)</label>
-                <select value={form.templateId} onChange={(e) => setForm({ ...form, templateId: e.target.value })}>
-                  <option value="">None — manual lines</option>
-                  {(templatesData?.data || []).map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
-                </select>
-              </div>
-              <div className="col form-group">
-                <label>Start Date</label>
-                <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required />
-              </div>
-            </div>
-            <button type="submit">Create Subscription</button>
-          </form>
+    <Modal title="New subscription" onClose={onClose} wide>
+      <ErrorAlert error={create.error} />
+      <form onSubmit={handleSubmit}>
+        <div className="form-grid">
+          <Field label="Customer">
+            <select value={form.customerId} onChange={set('customerId')} required>
+              <option value="">{customersQ.isLoading ? 'Loading…' : 'Select customer…'}</option>
+              {(customersQ.data || []).map((c) => (
+                <option key={c._id} value={c._id}>{c.companyName || c.name} — {c.email}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Plan">
+            <select value={form.planId} onChange={set('planId')} required>
+              <option value="">Select plan…</option>
+              {(plansQ.data?.data || []).map((p) => <option key={p._id} value={p._id}>{p.name} ({PERIOD_LABEL[p.billingPeriod]})</option>)}
+            </select>
+          </Field>
         </div>
-      )}
 
-      <div className="card">
-        <table>
-          <thead><tr><th>Number</th><th>Plan</th><th>Status</th><th>Monthly</th><th>Next Invoice</th><th></th></tr></thead>
-          <tbody>
-            {(data?.data || []).map((s) => (
-              <tr key={s._id}>
-                <td>{s.number}</td>
-                <td>{s.planName || '—'}</td>
-                <td><StatusBadge status={s.status} /></td>
-                <td><MoneyText amount={s.monthlyAmount} /></td>
-                <td>{s.nextInvoiceDate ? new Date(s.nextInvoiceDate).toLocaleDateString() : '—'}</td>
-                <td><Link to={`/subscriptions/${s._id}`}>View</Link></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+        <Field label="Lines">
+          <div className="tabs" style={{ marginBottom: 10 }}>
+            <button type="button" className={`tab ${form.source === 'template' ? 'active' : ''}`} onClick={() => setForm({ ...form, source: 'template' })}>From a quotation template</button>
+            <button type="button" className={`tab ${form.source === 'manual' ? 'active' : ''}`} onClick={() => setForm({ ...form, source: 'manual' })}>Pick products</button>
+          </div>
+          {form.source === 'template' ? (
+            <select value={form.templateId} onChange={pickTemplate} required>
+              <option value="">Select template…</option>
+              {(templatesQ.data?.data || []).map((t) => <option key={t._id} value={t._id}>{t.name} ({t.lines?.length || 0} lines)</option>)}
+            </select>
+          ) : (
+            <LineEditor products={productsQ.data?.data || []} value={form.lines} onChange={(lines) => setForm({ ...form, lines })} />
+          )}
+        </Field>
+
+        <div className="form-grid">
+          <Field label="Start date"><input type="date" value={form.startDate} onChange={set('startDate')} required /></Field>
+          <Field label="Expiry date"><input type="date" value={form.expiryDate} onChange={set('expiryDate')} /></Field>
+          <Field label="Payment terms (days)"><input type="number" min="0" value={form.paymentTermsDays} onChange={set('paymentTermsDays')} required /></Field>
+        </div>
+
+        <div className="form-actions">
+          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" disabled={!ready || create.isPending}>{create.isPending ? 'Creating…' : 'Create draft'}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }

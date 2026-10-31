@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
-    "seed": "node db/seed.js"
+    "dev": "node --env-file-if-exists=../.env --watch src/server.js",
+    "start": "node --env-file-if-exists=../.env src/server.js",
+    "seed": "node --env-file-if-exists=../.env db/seed.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

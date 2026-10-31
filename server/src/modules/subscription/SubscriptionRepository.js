@@ -3,6 +3,34 @@ import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
 import { keysetFilter } from '../../core/Pagination.js';
 
+// customerId → customers → users, yielding customerName / customerEmail. Use after $limit.
+function customerNameStages() {
+  return [
+    {
+      $lookup: {
+        from: 'customers',
+        localField: 'customerId',
+        foreignField: '_id',
+        as: 'customer',
+        pipeline: [
+          { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user', pipeline: [{ $project: { name: 1, email: 1 } }] } },
+          { $project: { companyName: 1, user: { $arrayElemAt: ['$user', 0] } } },
+        ],
+      },
+    },
+    { $addFields: { customer: { $arrayElemAt: ['$customer', 0] } } },
+    {
+      $addFields: {
+        customerName: {
+          $cond: [{ $gt: [{ $strLenCP: { $ifNull: ['$customer.companyName', ''] } }, 0] }, '$customer.companyName', '$customer.user.name'],
+        },
+        customerEmail: '$customer.user.email',
+      },
+    },
+    { $project: { customer: 0 } },
+  ];
+}
+
 export class SubscriptionRepository extends BaseRepository {
   constructor(db) { super(db, 'subscriptions'); }
 
@@ -34,19 +62,44 @@ export class SubscriptionRepository extends BaseRepository {
     return this.col.aggregate([
       { $match: filter },
       { $sort: { createdAt: -1, _id: -1 } },
-      { $limit: limit },
+      { $limit: limit + 1 }, // one extra row tells the service whether there is a next page
       {
         $lookup: {
           from: 'plans',
           localField: 'planId',
           foreignField: '_id',
           as: 'plan',
-          pipeline: [{ $project: { name: 1 } }],
+          pipeline: [{ $project: { name: 1, billingPeriod: 1 } }],
         },
       },
-      { $addFields: { planName: { $arrayElemAt: ['$plan.name', 0] } } },
-      { $project: { plan: 0 } },
+      ...customerNameStages(),
+      {
+        $addFields: {
+          planName: { $arrayElemAt: ['$plan.name', 0] },
+          billingPeriod: { $arrayElemAt: ['$plan.billingPeriod', 0] },
+        },
+      },
+      { $project: { plan: 0, lines: 0 } },
     ]).toArray();
+  }
+
+  /** Detail: subscription + plan + customer in one aggregation (lines are embedded). */
+  async findDetail(id) {
+    const [row] = await this.col.aggregate([
+      { $match: { _id: this.toObjectId(id) } },
+      {
+        $lookup: {
+          from: 'plans',
+          localField: 'planId',
+          foreignField: '_id',
+          as: 'plan',
+          pipeline: [{ $project: { name: 1, billingPeriod: 1, price: 1, allowPause: 1, allowEarlyClose: 1, allowRenew: 1, autoClose: 1 } }],
+        },
+      },
+      { $addFields: { plan: { $arrayElemAt: ['$plan', 0] } } },
+      ...customerNameStages(),
+    ]).toArray();
+    return row || null;
   }
 
   async create(payload, options = {}) {

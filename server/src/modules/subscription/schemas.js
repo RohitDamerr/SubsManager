@@ -12,7 +12,7 @@ export const createSubscriptionSchema = z.object({
     variantId: z.string().optional(),
     quantity: z.number().int().min(1),
   })).optional(),
-}).refine(
+}).strict().refine(
   (d) => d.templateId || (d.lines && d.lines.length > 0),
   { message: 'Either templateId or lines must be provided', path: ['lines'] }
 );

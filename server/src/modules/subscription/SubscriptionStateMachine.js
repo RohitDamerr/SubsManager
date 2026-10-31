@@ -39,4 +39,16 @@ export class SubscriptionStateMachine extends StateMachine {
       throw new ValidationError('Customers can only pause or close subscriptions');
     }
   }
+
+  /** Target states this actor may move to from `from` — lets the UI show only valid actions. */
+  allowedTransitions(from, plan = {}, actor = {}) {
+    return this.nextStates(from).filter((to) => {
+      try {
+        this.assertCanTransition(from, to, plan, actor);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  }
 }

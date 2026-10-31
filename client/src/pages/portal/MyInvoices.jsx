@@ -1,34 +1,46 @@
-// Customer portal — my invoices (read + print only).
-import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+// Customer portal — my invoices (read + print).  Drafts are hidden by the server.
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { invoices } from '../../api/resources.js';
+import { useCursorList } from '../../hooks/useCursorList.js';
+import { DataTable } from '../../components/DataTable.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { MoneyText } from '../../components/MoneyText.jsx';
+import { Card, Empty, PageHeader, QueryState } from '../../components/ui.jsx';
+import { formatDate, isOverdue } from '../../lib/format.js';
+
+const TABS = [['', 'All'], ['CONFIRMED', 'Unpaid'], ['PAID', 'Paid']];
 
 export default function MyInvoices() {
-  const { data } = useQuery({ queryKey: ['my-invoices'], queryFn: () => invoices.list({ limit: 50 }) });
+  const navigate = useNavigate();
+  const [status, setStatus] = useState('');
+  const list = useCursorList(['invoices', 'mine'], invoices.list, { limit: 20, ...(status ? { status } : {}) });
 
   return (
     <div>
-      <h1 className="page-title">My Invoices</h1>
-      <div className="card">
-        <table>
-          <thead><tr><th>Number</th><th>Issue Date</th><th>Due Date</th><th>Status</th><th>Total</th><th>Paid</th><th></th></tr></thead>
-          <tbody>
-            {(data?.data || []).map((inv) => (
-              <tr key={inv._id}>
-                <td>{inv.number || '(draft)'}</td>
-                <td>{new Date(inv.issueDate).toLocaleDateString()}</td>
-                <td>{new Date(inv.dueDate).toLocaleDateString()}</td>
-                <td><StatusBadge status={inv.status} /></td>
-                <td><MoneyText amount={inv.total} /></td>
-                <td><MoneyText amount={inv.amountPaid} /></td>
-                <td><Link to={`/invoices/${inv._id}`}>View</Link></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <PageHeader title="My invoices" />
+      <Card
+        bodyless
+        title={<div className="tabs">{TABS.map(([v, l]) => <button key={v} className={`tab ${status === v ? 'active' : ''}`} onClick={() => setStatus(v)}>{l}</button>)}</div>}
+      >
+        <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title="No invoices" />}>
+          <DataTable
+            data={list.rows}
+            onRowClick={(i) => navigate(`/invoices/${i._id}`)}
+            columns={[
+              { key: 'number', label: 'Invoice', render: (i) => <span className="strong">{i.number}</span> },
+              { key: 'period', label: 'Period', render: (i) => `${formatDate(i.periodStart)} – ${formatDate(i.periodEnd)}` },
+              { key: 'dueDate', label: 'Due', render: (i) => formatDate(i.dueDate) },
+              { key: 'status', label: 'Status', render: (i) => <StatusBadge status={i.status} overdue={isOverdue(i)} /> },
+              { key: 'total', label: 'Total', align: 'right', render: (i) => <MoneyText amount={i.total} /> },
+              { key: 'paid', label: 'Paid', align: 'right', render: (i) => <MoneyText amount={i.amountPaid} /> },
+            ]}
+          />
+          {list.hasNextPage && (
+            <div className="load-more"><button className="secondary sm" onClick={() => list.fetchNextPage()} disabled={list.isFetchingNextPage}>Load more</button></div>
+          )}
+        </QueryState>
+      </Card>
     </div>
   );
 }

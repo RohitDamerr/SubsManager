@@ -1,7 +1,7 @@
 // ProductRepository — products with variants embedded.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
-import { keysetFilter } from '../../core/Pagination.js';
+import { keysetFilterAsc } from '../../core/Pagination.js';
 
 export class ProductRepository extends BaseRepository {
   constructor(db) { super(db, 'products'); }
@@ -11,11 +11,11 @@ export class ProductRepository extends BaseRepository {
     if (isActive !== undefined) filter.isActive = isActive;
     if (q) filter.name = { $regex: q, $options: 'i' };
 
-    const keyset = keysetFilter(cursor, 'name');
+    const keyset = keysetFilterAsc(cursor, 'name');
     if (keyset) Object.assign(filter, keyset);
 
     return this.col.find(filter)
-      .sort({ name: 1, _id: -1 })
+      .sort({ name: 1, _id: 1 })
       .limit(limit + 1)
       .toArray();
   }

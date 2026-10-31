@@ -39,6 +39,7 @@ export class InvoiceBuilder {
 
     // Apply discounts (pull-based): step 1 per-line, step 2 subscription-level.
     discountEngine.apply(draft, issueDate);
+    this.allocateSubscriptionDiscount(lines, draft.discountTotal || 0);
 
     // Compute tax AFTER discounts, on the discounted amount.
     const taxResults = TaxEngine.calculate(
@@ -81,5 +82,29 @@ export class InvoiceBuilder {
         .map((l) => ({ discountId: l.discountId, productId: l.productId })),
       appliedSubscriptionDiscountId: draft.subscriptionDiscountId || null,
     };
+  }
+
+  /**
+   * Spread the subscription-level discount over lines in proportion to each line's
+   * net amount, so per-line tax is computed on what the customer actually pays.
+   * The last line takes the rounding remainder; sum(discountAmount) === discountTotal.
+   */
+  allocateSubscriptionDiscount(lines, discountTotal) {
+    const lineDiscounts = lines.reduce((s, l) => s + (l.discountAmount || 0), 0);
+    let remaining = discountTotal - lineDiscounts;
+    if (remaining <= 0) return;
+
+    const nets = lines.map((l) => l.amount - (l.discountAmount || 0));
+    const netTotal = nets.reduce((s, n) => s + n, 0);
+    if (netTotal <= 0) return;
+
+    const subDiscount = remaining;
+    lines.forEach((line, i) => {
+      const share = i === lines.length - 1
+        ? remaining
+        : Math.min(remaining, Math.floor((subDiscount * nets[i]) / netTotal));
+      line.discountAmount = (line.discountAmount || 0) + share;
+      remaining -= share;
+    });
   }
 }

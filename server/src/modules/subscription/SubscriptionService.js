@@ -13,8 +13,9 @@ export class SubscriptionService {
   /**
    * @param {{ subscriptionRepo, planRepo, templateRepo, productRepo, taxRepo, txManager, eventBus, subscriptionStateMachine }} deps
    */
-  constructor({ subscriptionRepo, planRepo, templateRepo, productRepo, taxRepo, customerRepo, txManager, eventBus, subscriptionStateMachine }) {
+  constructor({ subscriptionRepo, planRepo, templateRepo, productRepo, taxRepo, customerRepo, invoiceRepo, txManager, eventBus, subscriptionStateMachine }) {
     this.subscriptionRepo = subscriptionRepo;
+    this.invoiceRepo = invoiceRepo;
     this.planRepo = planRepo;
     this.templateRepo = templateRepo;
     this.productRepo = productRepo;
@@ -41,11 +42,17 @@ export class SubscriptionService {
     return { data, hasMore };
   }
 
+  /** Detail: subscription + plan + customer (one aggregation) and its invoices (one find). */
   async getById(id, actor) {
-    const sub = await this.subscriptionRepo.findById(id);
+    const sub = await this.subscriptionRepo.findDetail(id);
     if (!sub) throw new NotFoundError('Subscription');
     await this.assertCanAccess(sub, actor);
-    return sub;
+
+    let invoices = await this.invoiceRepo.findBySubscription(sub._id);
+    if (actor.role === 'CUSTOMER') invoices = invoices.filter((inv) => inv.status !== 'DRAFT');
+
+    const allowedTransitions = this.sm.allowedTransitions(sub.status, sub.plan || {}, actor);
+    return { ...sub, invoices: invoices.map(({ lines, ...inv }) => inv), allowedTransitions };
   }
 
   /**
@@ -56,6 +63,8 @@ export class SubscriptionService {
     // Load plan
     const plan = await this.planRepo.findById(payload.planId);
     if (!plan) throw new NotFoundError('Plan');
+    const customer = await this.customerRepo.findById(payload.customerId);
+    if (!customer) throw new NotFoundError('Customer');
 
     // Resolve lines: from template or body
     let lines = payload.lines;
@@ -174,7 +183,7 @@ export class SubscriptionService {
     if (to === 'ACTIVE') this.eventBus.emit('subscription.activated', { subscriptionId: id });
     if (to === 'CLOSED') this.eventBus.emit('subscription.closed', { subscriptionId: id });
 
-    return this.subscriptionRepo.findById(id);
+    return this.getById(id, actor);
   }
 
   /** Compute monthlyAmount: yearly / 12, weekly * 52 / 12, daily * 365 / 12. */

@@ -4,7 +4,9 @@ import { z } from 'zod';
 
 export function validateBody(schema) {
   return (req, res, next) => {
-    const result = schema.strict().safeParse(req.body);
+    // Refined schemas (ZodEffects) have no .strict(); those apply .strict() on their base object.
+    const strict = typeof schema.strict === 'function' ? schema.strict() : schema;
+    const result = strict.safeParse(req.body);
     if (!result.success) return next(result.error);
     req.body = result.data; // replace with parsed + stripped values
     return next();
