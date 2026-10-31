@@ -3,6 +3,8 @@
 import { useNavigate } from 'react-router-dom';
 import { subscriptions } from '../../api/resources.js';
 import { useCursorList } from '../../hooks/useCursorList.js';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
+import { SearchInput } from '../../components/SearchInput.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { MoneyText } from '../../components/MoneyText.jsx';
@@ -11,13 +13,15 @@ import { formatDate, PERIOD_LABEL } from '../../lib/format.js';
 
 export default function MySubscriptions() {
   const navigate = useNavigate();
-  const list = useCursorList(['subscriptions', 'mine'], subscriptions.list, { limit: 20 });
+  const [f, setF] = useUrlFilters({ q: '' });
+  const list = useCursorList(['subscriptions', 'mine'], subscriptions.list, { limit: 20, ...compact(f) });
 
   return (
     <div>
       <PageHeader title="My subscriptions" subtitle="Open one to see its invoices, or to pause or close it." />
       <Card bodyless>
-        <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title="No subscriptions yet">Our team will set one up for you.</Empty>}>
+        <div className="toolbar"><SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder="Search subscription number" /></div>
+        <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title={f.q ? 'No matching subscriptions' : 'No subscriptions yet'}>{f.q ? null : 'Our team will set one up for you.'}</Empty>}>
           <DataTable
             data={list.rows}
             onRowClick={(s) => navigate(`/subscriptions/${s._id}`)}

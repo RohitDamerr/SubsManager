@@ -1,10 +1,12 @@
 // Quotation templates — Admin & Staff create/edit.  A template is a plan + preset lines.
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { templates, plans, products } from '../../api/resources.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { can } from '../../auth/roles.js';
 import { DataTable } from '../../components/DataTable.jsx';
+import { SearchInput } from '../../components/SearchInput.jsx';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
 import { LineEditor } from '../../components/LineEditor.jsx';
 import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
 import { useToast } from '../../components/Toast.jsx';
@@ -13,7 +15,8 @@ import { PERIOD_LABEL } from '../../lib/format.js';
 export default function Templates() {
   const { user } = useAuth();
   const [editing, setEditing] = useState(null); // null | 'new' | template
-  const list = useQuery({ queryKey: ['templates'], queryFn: () => templates.list() });
+  const [f, setF] = useUrlFilters({ q: '' });
+  const list = useQuery({ queryKey: ['templates', f.q], queryFn: () => templates.list(compact(f)), placeholderData: keepPreviousData });
   const plansQ = useQuery({ queryKey: ['plans'], queryFn: () => plans.list({ limit: 100 }) });
   const productsQ = useQuery({ queryKey: ['products', 'all'], queryFn: () => products.list({ limit: 100 }) });
 
@@ -30,7 +33,8 @@ export default function Templates() {
         actions={writable && <button onClick={() => setEditing('new')}>+ New template</button>}
       />
       <Card bodyless>
-        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title="No templates yet" />}>
+        <div className="toolbar"><SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder="Search templates" /></div>
+        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title={f.q ? `Nothing matches "${f.q}"` : 'No templates yet'} />}>
           <DataTable
             data={rows}
             onRowClick={writable ? (t) => setEditing(t) : undefined}

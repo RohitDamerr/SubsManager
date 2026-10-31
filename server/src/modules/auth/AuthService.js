@@ -91,8 +91,8 @@ export class AuthService {
     }
   }
 
-  async listStaff() {
-    return this.userRepo.listByRoles(['ADMIN', 'STAFF']);
+  async listStaff(q) {
+    return this.userRepo.listByRoles(['ADMIN', 'STAFF'], q);
   }
 
   async listCustomers(query) {

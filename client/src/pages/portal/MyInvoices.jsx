@@ -1,8 +1,9 @@
 // Customer portal — my invoices (read + print).  Drafts are hidden by the server.
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { invoices } from '../../api/resources.js';
 import { useCursorList } from '../../hooks/useCursorList.js';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
+import { SearchInput } from '../../components/SearchInput.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { MoneyText } from '../../components/MoneyText.jsx';
@@ -13,16 +14,17 @@ const TABS = [['', 'All'], ['CONFIRMED', 'Unpaid'], ['PAID', 'Paid']];
 
 export default function MyInvoices() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState('');
-  const list = useCursorList(['invoices', 'mine'], invoices.list, { limit: 20, ...(status ? { status } : {}) });
+  const [f, setF] = useUrlFilters({ q: '', status: '' });
+  const list = useCursorList(['invoices', 'mine'], invoices.list, { limit: 20, ...compact(f) });
 
   return (
     <div>
       <PageHeader title="My invoices" />
       <Card
         bodyless
-        title={<div className="tabs">{TABS.map(([v, l]) => <button key={v} className={`tab ${status === v ? 'active' : ''}`} onClick={() => setStatus(v)}>{l}</button>)}</div>}
+        title={<div className="tabs">{TABS.map(([v, l]) => <button key={v} className={`tab ${f.status === v ? 'active' : ''}`} onClick={() => setF({ status: v })}>{l}</button>)}</div>}
       >
+        <div className="toolbar"><SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder="Search invoice number" /></div>
         <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title="No invoices" />}>
           <DataTable
             data={list.rows}

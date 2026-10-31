@@ -6,6 +6,8 @@ import { subscriptions, plans, templates, products, customers } from '../../api/
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { can } from '../../auth/roles.js';
 import { useCursorList } from '../../hooks/useCursorList.js';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
+import { SearchInput } from '../../components/SearchInput.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { LineEditor } from '../../components/LineEditor.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
@@ -25,14 +27,11 @@ function planAvailable(p) {
 export default function Subscriptions() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [status, setStatus] = useState('');
-  const [q, setQ] = useState('');
-  const [customerId, setCustomerId] = useState('');
   const [creating, setCreating] = useState(false);
+  const [f, setF] = useUrlFilters({ q: '', status: '', customerId: '' });
   const customersQ = useQuery({ queryKey: ['customers'], queryFn: () => customers.list({ limit: 200 }) });
-  const list = useCursorList(['subscriptions', 'all'], subscriptions.list, {
-    limit: 20, ...(status ? { status } : {}), ...(q.trim() ? { q: q.trim() } : {}), ...(customerId ? { customerId } : {}),
-  });
+  const list = useCursorList(['subscriptions', 'all'], subscriptions.list, { limit: 20, ...compact(f) });
+  const filtered = Boolean(f.q || f.status || f.customerId);
 
   return (
     <div>
@@ -47,21 +46,23 @@ export default function Subscriptions() {
         title={
           <div className="tabs">
             {STATUSES.map((s) => (
-              <button key={s} className={`tab ${status === s ? 'active' : ''}`} onClick={() => setStatus(s)}>
+              <button key={s} className={`tab ${f.status === s ? 'active' : ''}`} onClick={() => setF({ status: s })}>
                 {s ? s.charAt(0) + s.slice(1).toLowerCase() : 'All'}
               </button>
             ))}
           </div>
         }
       >
-        <div className="card-body filters" style={{ borderBottom: '1px solid var(--border)', paddingBlock: 12 }}>
-          <input className="search" placeholder="Search number, e.g. 42" value={q} onChange={(e) => setQ(e.target.value)} />
-          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} style={{ width: 240 }}>
+        <div className="toolbar">
+          <SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder="Search number or customer" />
+          <select value={f.customerId} onChange={(e) => setF({ customerId: e.target.value })} style={{ width: 240 }}>
             <option value="">All customers</option>
             {(customersQ.data || []).map((c) => <option key={c._id} value={c._id}>{c.companyName || c.name}</option>)}
           </select>
+          <span className="spacer" />
+          {filtered && <button className="ghost sm" onClick={() => setF({ q: '', status: '', customerId: '' })}>Clear filters</button>}
         </div>
-        <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title="No subscriptions">{status || q || customerId ? 'Nothing matches these filters.' : 'Create the first one to start billing.'}</Empty>}>
+        <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title="No subscriptions">{filtered ? 'Nothing matches these filters.' : 'Create the first one to start billing.'}</Empty>}>
           <DataTable
             data={list.rows}
             onRowClick={(s) => navigate(`/subscriptions/${s._id}`)}

@@ -1,6 +1,7 @@
 // ProductRepository — products with variants embedded.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
+import { containsText } from '../../core/Search.js';
 import { keysetFilterAsc } from '../../core/Pagination.js';
 
 export class ProductRepository extends BaseRepository {
@@ -9,7 +10,7 @@ export class ProductRepository extends BaseRepository {
   async list({ limit, cursor, q, isActive } = {}) {
     const filter = {};
     if (isActive !== undefined) filter.isActive = isActive;
-    if (q) filter.name = { $regex: q, $options: 'i' };
+    if (q?.trim()) filter.name = containsText(q);
 
     const keyset = keysetFilterAsc(cursor, 'name');
     if (keyset) Object.assign(filter, keyset);

@@ -35,4 +35,5 @@ export const listDiscountQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().optional(),
   isActive: z.enum(['true', 'false']).optional(),
+  q: z.string().max(100).optional(),
 });

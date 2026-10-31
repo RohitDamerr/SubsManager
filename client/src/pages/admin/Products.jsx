@@ -1,11 +1,13 @@
 // Products with embedded variants.  Admin: create/edit/add variants and sees cost & margin.
 // Staff: read-only (the API also strips cost price for them).
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { products, taxes } from '../../api/resources.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { can } from '../../auth/roles.js';
 import { DataTable } from '../../components/DataTable.jsx';
+import { SearchInput } from '../../components/SearchInput.jsx';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
 import { MoneyText } from '../../components/MoneyText.jsx';
 import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
 import { useToast } from '../../components/Toast.jsx';
@@ -18,7 +20,8 @@ export default function Products() {
   const [editing, setEditing] = useState(null); // null | 'new' | product
   const [variantFor, setVariantFor] = useState(null);
 
-  const list = useQuery({ queryKey: ['products', 'all'], queryFn: () => products.list({ limit: 100 }) });
+  const [f, setF] = useUrlFilters({ q: '' });
+  const list = useQuery({ queryKey: ['products', 'all', f.q], queryFn: () => products.list({ limit: 100, ...compact(f) }), placeholderData: keepPreviousData });
   const taxesQ = useQuery({ queryKey: ['taxes'], queryFn: () => taxes.list() });
   const taxById = new Map((taxesQ.data?.data || []).map((t) => [t._id, t]));
   const rows = list.data?.data || [];
@@ -55,7 +58,8 @@ export default function Products() {
         actions={writable && <button onClick={() => setEditing('new')}>+ New product</button>}
       />
       <Card bodyless>
-        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title="No products yet" />}>
+        <div className="toolbar"><SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder="Search products" /></div>
+        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title={f.q ? `Nothing matches "${f.q}"` : 'No products yet'} />}>
           <DataTable data={rows} columns={columns} />
         </QueryState>
       </Card>

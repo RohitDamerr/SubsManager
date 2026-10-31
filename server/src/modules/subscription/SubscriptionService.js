@@ -37,6 +37,9 @@ export class SubscriptionService {
       if (!customer) return { data: [], hasMore: false };
       filter.customerId = customer._id.toString();
     }
+    if (query.q?.trim() && actor.role !== 'CUSTOMER') {
+      filter.qCustomerIds = await this.customerRepo.findIdsMatching(query.q);
+    }
     const rows = await this.subscriptionRepo.listWithPlanName(filter);
     const hasMore = rows.length > limit;
     const data = hasMore ? rows.slice(0, limit) : rows;

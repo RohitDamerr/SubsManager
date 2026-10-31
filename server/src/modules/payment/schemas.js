@@ -6,6 +6,7 @@ export const paymentQuerySchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   method: z.enum(['CASH', 'BANK_TRANSFER', 'CARD', 'UPI', 'CHEQUE']).optional(),
+  q: z.string().max(100).optional(),
 });
 
 export const recordPaymentSchema = z.object({

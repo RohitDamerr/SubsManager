@@ -1,6 +1,7 @@
 // DiscountRepository — discounts + redemptions collections.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
+import { containsText } from '../../core/Search.js';
 
 export class DiscountRepository extends BaseRepository {
   constructor(db) {
@@ -8,8 +9,9 @@ export class DiscountRepository extends BaseRepository {
     this.redemptions = db.collection('discountRedemptions');
   }
 
-  async list({ isActive, limit = 50 } = {}) {
+  async list({ isActive, limit = 50, q } = {}) {
     const filter = {};
+    if (q?.trim()) filter.name = containsText(q);
     if (isActive !== undefined) filter.isActive = isActive === 'true' || isActive === true;
     return this.col.find(filter).sort({ createdAt: -1 }).limit(limit).toArray();
   }

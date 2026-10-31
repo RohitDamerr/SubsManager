@@ -17,7 +17,7 @@ export const auth = {
 
 // Staff accounts (admin)
 export const staff = {
-  list: () => api.get('/users/staff').then(body),
+  list: (params) => api.get('/users/staff', { params }).then(body),
   create: (b) => api.post('/users/staff', b).then(body),
 };
 

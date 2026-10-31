@@ -37,4 +37,5 @@ export const paginationQuerySchema = z.object({
   cursor: z.string().optional(),
   status: z.string().optional(),
   q: z.string().optional(),
+  isActive: z.enum(['true', 'false']).optional(),
 });

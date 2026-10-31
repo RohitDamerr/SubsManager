@@ -154,7 +154,16 @@ td:has(> .chip) { white-space: normal; min-width: 160px; }
 
 .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 400; }
 .filters input, .filters select { padding: 6px 10px; font-size: 13px; }
-.search { width: 200px; }
+.search-input { position: relative; display: inline-flex; align-items: center; max-width: 100%; }
+.search-input input { padding-left: 30px; padding-right: 30px; }
+.search-input input::-webkit-search-cancel-button { display: none; }
+.search-icon { position: absolute; left: 10px; color: var(--text-subtle); font-size: 15px; pointer-events: none; }
+.search-clear { position: absolute; right: 4px; background: transparent; color: var(--text-muted); padding: 2px 6px; font-size: 12px; }
+.search-clear:hover { background: var(--surface-2); color: var(--text); }
+.search-kbd { position: absolute; right: 8px; font-family: inherit; font-size: 11px; color: var(--text-subtle); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; pointer-events: none; }
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.toolbar .spacer { flex: 1; }
+.result-count { color: var(--text-muted); font-size: 13px; }
 
 /* ---------- Lifecycle stepper ---------- */
 .stepper { display: flex; align-items: center; margin-bottom: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; overflow-x: auto; }

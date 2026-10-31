@@ -1,22 +1,26 @@
 // Staff — Admin only.  Lists team accounts and creates new Staff or Admin users.
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { staff } from '../../api/resources.js';
 import { DataTable } from '../../components/DataTable.jsx';
+import { SearchInput } from '../../components/SearchInput.jsx';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
 import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { initials } from '../../lib/format.js';
 
 export default function Staff() {
   const [creating, setCreating] = useState(false);
-  const list = useQuery({ queryKey: ['staff'], queryFn: staff.list });
+  const [f, setF] = useUrlFilters({ q: '' });
+  const list = useQuery({ queryKey: ['staff', f.q], queryFn: () => staff.list(compact(f)), placeholderData: keepPreviousData });
   const rows = list.data || [];
 
   return (
     <div>
       <PageHeader title="Team" subtitle="Staff run subscriptions and invoices. Admins also manage the catalog, discounts and team." actions={<button onClick={() => setCreating(true)}>+ Add team member</button>} />
       <Card bodyless>
-        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title="No team members" />}>
+        <div className="toolbar"><SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder="Search name or email" /></div>
+        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title={f.q ? `Nothing matches "${f.q}"` : 'No team members'} />}>
           <DataTable
             data={rows}
             columns={[

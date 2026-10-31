@@ -10,8 +10,8 @@ export class PaymentRepository extends BaseRepository {
    * Payments register, newest first.  Filters hit the paidOn / customerId+paidOn indexes;
    * invoice number + customer name are joined after $limit (only for the rows on the page).
    */
-  async list({ limit = 20, cursor, from, to, method, customerId } = {}) {
-    const filter = {};
+  async list({ limit = 20, cursor, from, to, method, customerId, qMatch } = {}) {
+    const filter = qMatch ? { ...qMatch } : {};
     if (customerId) filter.customerId = this.toObjectId(customerId);
     if (method) filter.method = method;
     if (from || to) {
@@ -33,8 +33,8 @@ export class PaymentRepository extends BaseRepository {
   }
 
   /** Total collected for the same filters (one $group) — shown above the register. */
-  async total({ from, to, method, customerId } = {}) {
-    const filter = {};
+  async total({ from, to, method, customerId, qMatch } = {}) {
+    const filter = qMatch ? { ...qMatch } : {};
     if (customerId) filter.customerId = this.toObjectId(customerId);
     if (method) filter.method = method;
     if (from || to) {

@@ -1,6 +1,7 @@
 // CustomerRepository — customers collection.  Each customer references a userId.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
+import { containsText } from '../../core/Search.js';
 
 export class CustomerRepository extends BaseRepository {
   constructor(db) { super(db, 'customers'); }
@@ -31,13 +32,25 @@ export class CustomerRepository extends BaseRepository {
       { $addFields: { user: { $arrayElemAt: ['$user', 0] } } },
     ];
     if (q) {
-      const rx = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+      const rx = containsText(q);
       pipeline.push({ $match: { $or: [{ companyName: rx }, { 'user.name': rx }, { 'user.email': rx }] } });
     }
     pipeline.push({ $limit: limit }, {
       $project: { companyName: 1, phone: 1, createdAt: 1, name: '$user.name', email: '$user.email', isActive: '$user.isActive' },
     });
     return this.col.aggregate(pipeline).toArray();
+  }
+
+  /** Ids of customers whose company, name or email contains q — lets lists search "by customer". */
+  async findIdsMatching(q, limit = 500) {
+    const rx = containsText(q);
+    const rows = await this.col.aggregate([
+      { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user', pipeline: [{ $project: { name: 1, email: 1 } }] } },
+      { $match: { $or: [{ companyName: rx }, { 'user.name': rx }, { 'user.email': rx }] } },
+      { $limit: limit },
+      { $project: { _id: 1 } },
+    ]).toArray();
+    return rows.map((r) => r._id);
   }
 
   async updateByUserId(userId, update, options = {}) {

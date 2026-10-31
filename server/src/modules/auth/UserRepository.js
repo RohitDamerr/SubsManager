@@ -1,6 +1,7 @@
 // UserRepository — users collection access.  Email is stored lowercased.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
+import { containsText } from '../../core/Search.js';
 
 export class UserRepository extends BaseRepository {
   constructor(db) { super(db, 'users'); }
@@ -25,8 +26,10 @@ export class UserRepository extends BaseRepository {
     return { ...doc, _id: result.insertedId };
   }
 
-  async listByRoles(roles) {
-    return this.col.find({ role: { $in: roles } }, { projection: { passwordHash: 0, resetToken: 0 } })
+  async listByRoles(roles, q) {
+    const filter = { role: { $in: roles } };
+    if (q?.trim()) filter.$or = [{ name: containsText(q) }, { email: containsText(q) }];
+    return this.col.find(filter, { projection: { passwordHash: 0, resetToken: 0 } })
       .sort({ createdAt: -1 }).toArray();
   }
 

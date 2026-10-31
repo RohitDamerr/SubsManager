@@ -34,7 +34,7 @@ export class AuthController extends BaseController {
   });
 
   listStaff = asyncHandler(async (req, res) => {
-    const users = await this.authService.listStaff();
+    const users = await this.authService.listStaff(typeof req.query.q === 'string' ? req.query.q : undefined);
     return this.ok(res, users.map((u) => this.publicUser(u)));
   });
 

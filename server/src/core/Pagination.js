@@ -2,6 +2,7 @@
 // Sort must be deterministic: we paginate by a sortable field + _id descending.
 
 import { ObjectId } from 'mongodb';
+import { ValidationError } from './AppError.js';
 
 /**
  * Build a cursor string from the last document in a page.
@@ -25,6 +26,7 @@ export function decodeCursor(str) {
   if (!str) return null;
   try {
     const json = JSON.parse(Buffer.from(str, 'base64url').toString());
+    if (!json || !ObjectId.isValid(json.id)) throw new Error('bad cursor');
     return {
       v: typeof json.v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(json.v)
         ? new Date(json.v)
@@ -32,7 +34,7 @@ export function decodeCursor(str) {
       id: json.id,
     };
   } catch {
-    throw new Error('Invalid pagination cursor');
+    throw new ValidationError('Invalid pagination cursor');
   }
 }
 

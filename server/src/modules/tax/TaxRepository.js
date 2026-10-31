@@ -1,13 +1,15 @@
 // TaxRepository — taxes collection access.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
+import { containsText } from '../../core/Search.js';
 
 export class TaxRepository extends BaseRepository {
   constructor(db) { super(db, 'taxes'); }
 
-  async list({ isActive } = {}) {
+  async list({ isActive, q } = {}) {
     const filter = {};
-    if (isActive !== undefined) filter.isActive = isActive;
+    if (q?.trim()) filter.name = containsText(q);
+    if (isActive !== undefined) filter.isActive = isActive === true || isActive === 'true'; // query strings are text
     return this.col.find(filter).sort({ name: 1 }).toArray();
   }
 

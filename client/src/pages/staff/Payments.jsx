@@ -1,11 +1,12 @@
 // Payments register — Staff & Admin see all, customers see their own (server-scoped).
 // Filter by date range and method; the total for the filter comes back with the first page.
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { payments } from '../../api/resources.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { ROLES } from '../../auth/roles.js';
 import { useCursorList } from '../../hooks/useCursorList.js';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
+import { SearchInput } from '../../components/SearchInput.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { MoneyText } from '../../components/MoneyText.jsx';
 import { DateRange } from '../../components/DateRange.jsx';
@@ -18,11 +19,9 @@ export default function Payments() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isCustomer = user.role === ROLES.CUSTOMER;
-  const [range, setRange] = useState({ from: '', to: '' });
-  const [method, setMethod] = useState('');
-
-  const params = { limit: 20, ...(range.from ? { from: range.from } : {}), ...(range.to ? { to: range.to } : {}), ...(method ? { method } : {}) };
-  const list = useCursorList(['payments', 'register'], payments.register, params);
+  const [f, setF] = useUrlFilters({ q: '', method: '', from: '', to: '' });
+  const list = useCursorList(['payments', 'register'], payments.register, { limit: 20, ...compact(f) });
+  const filtered = Boolean(f.q || f.method || f.from || f.to);
   const summary = list.data?.pages[0]?.summary;
 
   return (
@@ -37,18 +36,17 @@ export default function Payments() {
         <div className="kpi-card"><div className="kpi-label">Payments</div><div className="kpi-value">{summary ? summary.count : '…'}</div></div>
       </div>
 
-      <Card
-        bodyless
-        title={
-          <div className="filters">
-            <DateRange value={range} onChange={setRange} />
-            <select value={method} onChange={(e) => setMethod(e.target.value)} style={{ width: 170 }}>
-              <option value="">All methods</option>
-              {Object.entries(METHOD_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </div>
-        }
-      >
+      <Card bodyless>
+        <div className="toolbar">
+          <SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder={isCustomer ? 'Search invoice number' : 'Search invoice or customer'} />
+          <select value={f.method} onChange={(e) => setF({ method: e.target.value })} style={{ width: 170 }}>
+            <option value="">All methods</option>
+            {Object.entries(METHOD_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <DateRange value={{ from: f.from, to: f.to }} onChange={(r) => setF(r)} />
+          <span className="spacer" />
+          {filtered && <button className="ghost sm" onClick={() => setF({ q: '', method: '', from: '', to: '' })}>Clear filters</button>}
+        </div>
         <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title="No payments match these filters" />}>
           <DataTable
             data={list.rows}

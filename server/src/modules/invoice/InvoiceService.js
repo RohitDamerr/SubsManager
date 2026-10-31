@@ -33,6 +33,9 @@ export class InvoiceService {
       if (filter.status === 'DRAFT') return { data: [], hasMore: false };
       filter.excludeDraft = true;
     }
+    if (query.q?.trim() && actor.role !== 'CUSTOMER') {
+      filter.qCustomerIds = await this.customerRepo.findIdsMatching(query.q);
+    }
     const rows = await this.invoiceRepo.list(filter);
     const hasMore = rows.length > limit;
     const data = hasMore ? rows.slice(0, limit) : rows;

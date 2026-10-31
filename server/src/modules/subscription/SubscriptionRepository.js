@@ -2,13 +2,9 @@
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
 import { keysetFilter } from '../../core/Pagination.js';
+import { numberPrefix } from '../../core/Search.js';
 
-/** "12" or "sub-12" → prefix match on the unique number index (e.g. ^SUB-000012). */
-export function numberPrefix(q, prefix) {
-  const digits = String(q).toUpperCase().replace(new RegExp(`^${prefix}-?`), '').replace(/\D/g, '');
-  if (!digits) return { $regex: `^${prefix}-` };
-  return { $regex: `^${prefix}-0*${digits}` };
-}
+export { numberPrefix };
 
 // customerId → customers → users, yielding customerName / customerEmail. Use after $limit.
 function customerNameStages() {
@@ -58,17 +54,21 @@ export class SubscriptionRepository extends BaseRepository {
   /**
    * List with plan name via aggregation — $lookup placed AFTER $limit (no N+1).
    */
-  async listWithPlanName({ limit = 20, cursor, status, customerId, q } = {}) {
+  async listWithPlanName({ limit = 20, cursor, status, customerId, q, qCustomerIds = [] } = {}) {
     const filter = {};
     if (status) filter.status = status;
     if (customerId) filter.customerId = this.toObjectId(customerId);
-    if (q) filter.number = numberPrefix(q, 'SUB');
+    if (q?.trim()) {
+      // Search by number prefix or by customer (ids resolved by the service).
+      const byNumber = numberPrefix(q, 'SUB');
+      filter.$or = [...(byNumber ? [{ number: byNumber }] : []), { customerId: { $in: qCustomerIds } }];
+    }
 
     const keyset = keysetFilter(cursor, 'createdAt');
-    if (keyset) Object.assign(filter, keyset);
+    const match = keyset ? { $and: [filter, keyset] } : filter;
 
     return this.col.aggregate([
-      { $match: filter },
+      { $match: match },
       { $sort: { createdAt: -1, _id: -1 } },
       { $limit: limit + 1 }, // one extra row tells the service whether there is a next page
       {

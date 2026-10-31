@@ -1,13 +1,14 @@
 // PlanRepository — plans collection access.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
+import { containsText } from '../../core/Search.js';
 
 export class PlanRepository extends BaseRepository {
   constructor(db) { super(db, 'plans'); }
 
   async list({ limit, cursor, q } = {}) {
     const filter = {};
-    if (q) filter.name = { $regex: q, $options: 'i' };
+    if (q?.trim()) filter.name = containsText(q);
 
     // Use createdAt ascending for keyset — plans are rarely paginated heavily.
     const rows = await this.col.find(filter)

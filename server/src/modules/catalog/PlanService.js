@@ -1,5 +1,11 @@
 // PlanService — business rules for plans.
-import { NotFoundError, translateMongoError } from '../../core/AppError.js';
+import { NotFoundError, ValidationError } from '../../core/AppError.js';
+
+function assertWindow({ availableFrom, availableTo }) {
+  if (availableFrom && availableTo && new Date(availableTo) < new Date(availableFrom)) {
+    throw new ValidationError('"Available until" must be on or after "Available from"');
+  }
+}
 
 export class PlanService {
   constructor({ planRepo }) {
@@ -21,12 +27,14 @@ export class PlanService {
   }
 
   async create(payload) {
+    assertWindow(payload);
     return this.planRepo.create(payload);
   }
 
   async update(id, update) {
     const plan = await this.planRepo.findById(id);
     if (!plan) throw new NotFoundError('Plan');
+    assertWindow({ availableFrom: update.availableFrom ?? plan.availableFrom, availableTo: update.availableTo ?? plan.availableTo });
     await this.planRepo.update(id, update);
     return this.planRepo.findById(id);
   }

@@ -2,14 +2,21 @@
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
 import { keysetFilter } from '../../core/Pagination.js';
-import { numberPrefix } from '../subscription/SubscriptionRepository.js';
+import { containsText, numberPrefix } from '../../core/Search.js';
 
 export class InvoiceRepository extends BaseRepository {
   constructor(db) { super(db, 'invoices'); }
 
-  async list({ limit = 20, cursor, status, customerId, overdue, excludeDraft, q, from, to } = {}) {
+  async list({ limit = 20, cursor, status, customerId, overdue, excludeDraft, q, qCustomerIds = [], from, to } = {}) {
     const filter = {};
-    if (q) filter.number = numberPrefix(q, 'INV');
+    if (q?.trim()) {
+      const byNumber = numberPrefix(q, 'INV');
+      filter.$or = [
+        ...(byNumber ? [{ number: byNumber }] : []),
+        { customerId: { $in: qCustomerIds } },
+        { customerName: containsText(q) },
+      ];
+    }
     if (from || to) {
       filter.issueDate = {};
       if (from) filter.issueDate.$gte = new Date(from);
@@ -17,7 +24,7 @@ export class InvoiceRepository extends BaseRepository {
     }
     if (status) filter.status = status;
     else if (excludeDraft) filter.status = { $ne: 'DRAFT' };
-    if (customerId) filter.customerId = new ObjectId(customerId);
+    if (customerId) filter.customerId = this.toObjectId(customerId);
     if (overdue === 'true' || overdue === true) {
       filter.status = 'CONFIRMED';
       filter.dueDate = { $lt: new Date() };

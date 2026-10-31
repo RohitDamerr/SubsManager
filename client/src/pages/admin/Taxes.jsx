@@ -1,10 +1,12 @@
 // Taxes — Admin create/edit, Staff read-only.  Rates are snapshotted onto subscription lines.
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { taxes } from '../../api/resources.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { can } from '../../auth/roles.js';
 import { DataTable } from '../../components/DataTable.jsx';
+import { SearchInput } from '../../components/SearchInput.jsx';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
 import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
 import { useToast } from '../../components/Toast.jsx';
 
@@ -12,7 +14,8 @@ export default function Taxes() {
   const { user } = useAuth();
   const writable = can(user, 'catalog:write');
   const [editing, setEditing] = useState(null);
-  const list = useQuery({ queryKey: ['taxes'], queryFn: () => taxes.list() });
+  const [f, setF] = useUrlFilters({ q: '' });
+  const list = useQuery({ queryKey: ['taxes', f.q], queryFn: () => taxes.list(compact(f)), placeholderData: keepPreviousData });
   const rows = list.data?.data || [];
 
   return (
@@ -23,7 +26,8 @@ export default function Taxes() {
         actions={writable && <button onClick={() => setEditing('new')}>+ New tax</button>}
       />
       <Card bodyless>
-        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title="No taxes yet" />}>
+        <div className="toolbar"><SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder="Search taxes" /></div>
+        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title={f.q ? `Nothing matches "${f.q}"` : 'No taxes yet'} />}>
           <DataTable
             data={rows}
             onRowClick={writable ? (t) => setEditing(t) : undefined}

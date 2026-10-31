@@ -2,6 +2,7 @@
 // The invoice update uses a guarded pipeline update so two concurrent
 // payments can't over-pay the invoice (atomic single-document update).
 import { ObjectId } from 'mongodb';
+import { numberPrefix } from '../../core/Search.js';
 import {
   NotFoundError, ValidationError, ForbiddenError, ConflictError,
 } from '../../core/AppError.js';
@@ -27,9 +28,22 @@ export class PaymentService {
       if (!customer) return { data: [], hasMore: false, summary: { total: 0, count: 0 } };
       filter.customerId = customer._id.toString();
     }
+    if (query.q?.trim()) filter.qMatch = await this.searchFilter(query.q, actor);
     const [rows, summary] = await Promise.all([this.paymentRepo.list(filter), this.paymentRepo.total(filter)]);
     const hasMore = rows.length > limit;
     return { data: hasMore ? rows.slice(0, limit) : rows, hasMore, summary };
+  }
+
+  /** q matches the invoice number, or (for staff) the customer. */
+  async searchFilter(q, actor) {
+    const or = [];
+    const byNumber = numberPrefix(q, 'INV');
+    if (byNumber) {
+      const invoices = await this.invoiceRepo.col.find({ number: byNumber }, { projection: { _id: 1 } }).limit(500).toArray();
+      or.push({ invoiceId: { $in: invoices.map((i) => i._id) } });
+    }
+    if (actor.role !== 'CUSTOMER') or.push({ customerId: { $in: await this.customerRepo.findIdsMatching(q) } });
+    return { $or: or.length ? or : [{ _id: null }] };
   }
 
   async listByInvoice(invoiceId, actor) {

@@ -1,11 +1,13 @@
 // Discounts — Admin create/edit, Staff read-only.  Rules are applied automatically by
 // the billing run (best product discount per line, then best subscription discount).
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { discounts, products } from '../../api/resources.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { can } from '../../auth/roles.js';
 import { DataTable } from '../../components/DataTable.jsx';
+import { SearchInput } from '../../components/SearchInput.jsx';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
 import { MoneyText } from '../../components/MoneyText.jsx';
 import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
 import { useToast } from '../../components/Toast.jsx';
@@ -24,7 +26,8 @@ export default function Discounts() {
   const { user } = useAuth();
   const writable = can(user, 'discount:write');
   const [editing, setEditing] = useState(null);
-  const list = useQuery({ queryKey: ['discounts'], queryFn: () => discounts.list({ limit: 100 }) });
+  const [f, setF] = useUrlFilters({ q: '' });
+  const list = useQuery({ queryKey: ['discounts', f.q], queryFn: () => discounts.list({ limit: 100, ...compact(f) }), placeholderData: keepPreviousData });
   const productsQ = useQuery({ queryKey: ['products', 'all'], queryFn: () => products.list({ limit: 100 }) });
   const productById = new Map((productsQ.data?.data || []).map((p) => [p._id, p]));
   const rows = list.data?.data || [];
@@ -37,7 +40,8 @@ export default function Discounts() {
         actions={writable && <button onClick={() => setEditing('new')}>+ New discount</button>}
       />
       <Card bodyless>
-        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title="No discounts yet" />}>
+        <div className="toolbar"><SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder="Search discounts" /></div>
+        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title={f.q ? `Nothing matches "${f.q}"` : 'No discounts yet'} />}>
           <DataTable
             data={rows}
             onRowClick={writable ? (d) => setEditing(d) : undefined}

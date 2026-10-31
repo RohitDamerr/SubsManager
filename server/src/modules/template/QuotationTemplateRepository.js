@@ -1,13 +1,14 @@
 // QuotationTemplateRepository — templates with lines embedded.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
+import { containsText } from '../../core/Search.js';
 
 export class QuotationTemplateRepository extends BaseRepository {
   constructor(db) { super(db, 'quotationTemplates'); }
 
   async list({ q } = {}) {
     const filter = {};
-    if (q) filter.name = { $regex: q, $options: 'i' };
+    if (q?.trim()) filter.name = containsText(q);
     return this.col.find(filter).sort({ createdAt: -1 }).toArray();
   }
 

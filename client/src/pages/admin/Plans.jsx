@@ -1,10 +1,12 @@
 // Plans — Admin create/edit, Staff read-only.  Plan flags drive which subscription actions are allowed.
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { plans } from '../../api/resources.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { can } from '../../auth/roles.js';
 import { DataTable } from '../../components/DataTable.jsx';
+import { SearchInput } from '../../components/SearchInput.jsx';
+import { compact, useUrlFilters } from '../../hooks/useUrlFilters.js';
 import { MoneyText } from '../../components/MoneyText.jsx';
 import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
 import { useToast } from '../../components/Toast.jsx';
@@ -33,7 +35,8 @@ export default function Plans() {
   const { user } = useAuth();
   const writable = can(user, 'catalog:write');
   const [editing, setEditing] = useState(null);
-  const list = useQuery({ queryKey: ['plans'], queryFn: () => plans.list({ limit: 100 }) });
+  const [f, setF] = useUrlFilters({ q: '' });
+  const list = useQuery({ queryKey: ['plans', f.q], queryFn: () => plans.list({ limit: 100, ...compact(f) }), placeholderData: keepPreviousData });
   const rows = list.data?.data || [];
 
   return (
@@ -44,7 +47,8 @@ export default function Plans() {
         actions={writable && <button onClick={() => setEditing('new')}>+ New plan</button>}
       />
       <Card bodyless>
-        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title="No plans yet" />}>
+        <div className="toolbar"><SearchInput value={f.q} onChange={(q) => setF({ q })} placeholder="Search plans" /></div>
+        <QueryState query={list} isEmpty={!rows.length} empty={<Empty title={f.q ? `Nothing matches "${f.q}"` : 'No plans yet'} />}>
           <DataTable
             data={rows}
             onRowClick={writable ? (p) => setEditing(p) : undefined}
