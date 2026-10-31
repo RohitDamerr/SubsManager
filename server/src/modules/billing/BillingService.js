@@ -1,0 +1,219 @@
+// BillingService — bulk billing run (no brute force, no N+1).
+//
+// Algorithm (section 9):
+// 1. Lock
+// 2. Select due subscriptions in batches of 500 using the partial index
+// 3. Load active discounts once and build the DiscountEngine
+// 4. Build invoices in memory (lines are embedded, no second query)
+// 5. Write the batch in one transaction (unique index guards double billing)
+// 6. On failure, retry one subscription at a time
+// 7. Repeat until no due subscriptions remain, then release the lock
+import { ObjectId } from 'mongodb';
+import { CounterService } from '../subscription/CounterService.js';
+
+const PERIOD_DAYS = { DAILY: 1, WEEKLY: 7, MONTHLY: 30, YEARLY: 365 };
+
+export class BillingService {
+  /**
+   * @param {{ subscriptionRepo, invoiceRepo, discountRepo, invoiceBuilder, txManager, billingLock, planRepo }} deps
+   */
+  constructor({ subscriptionRepo, invoiceRepo, discountRepo, invoiceBuilder, txManager, billingLock, planRepo }) {
+    this.subscriptionRepo = subscriptionRepo;
+    this.invoiceRepo = invoiceRepo;
+    this.discountRepo = discountRepo;
+    this.invoiceBuilder = invoiceBuilder;
+    this.txManager = txManager;
+    this.billingLock = billingLock;
+    this.planRepo = planRepo;
+    this.counter = new CounterService();
+  }
+
+  async run() {
+    // 1. Acquire lock
+    const acquired = await this.billingLock.acquire(30);
+    if (!acquired) {
+      return { ran: false, reason: 'Another billing run is active' };
+    }
+
+    try {
+      // 3. Load active discounts ONCE — reused for the entire run.
+      const activeDiscounts = await this.discountRepo.findActiveOnDate(new Date());
+
+      // Cache plans to avoid re-fetching across batches.
+      const planCache = new Map();
+      let totalCreated = 0;
+      let totalErrors = 0;
+
+      // 2 + 7. Loop until no due subscriptions.
+      let batch = 0;
+      while (true) {
+        const subs = await this.subscriptionRepo.findDue(500);
+        if (subs.length === 0) break;
+
+        batch++;
+        const result = await this.processBatch(subs, activeDiscounts, planCache);
+        totalCreated += result.created;
+        totalErrors += result.errors;
+      }
+
+      // Nightly maintenance: close autoClose subscriptions past expiryDate.
+      await this.subscriptionRepo.autoCloseExpired();
+
+      return { ran: true, batches: batch, created: totalCreated, errors: totalErrors };
+    } finally {
+      await this.billingLock.release();
+    }
+  }
+
+  /**
+   * Process a batch of subscriptions.
+   * Builds invoices in memory, writes in one transaction.
+   * On failure, retries one subscription at a time.
+   */
+  async processBatch(subscriptions, activeDiscounts, planCache) {
+    // Load plans for all subs in this batch (one $in query).
+    const planIds = [...new Set(subscriptions.map((s) => s.planId.toString()))];
+    const planIdsToLoad = planIds.filter((id) => !planCache.has(id));
+    if (planIdsToLoad.length) {
+      const plans = await this.planRepo.findManyByIds(planIdsToLoad);
+      plans.forEach((p) => planCache.set(p._id.toString(), p));
+    }
+
+    // Build all invoice drafts in memory.
+    const drafts = [];
+    const subscriptionUpdates = [];
+
+    for (const sub of subscriptions) {
+      const plan = planCache.get(sub.planId.toString());
+      if (!plan) {
+        console.warn(`[billing] subscription ${sub._id} has no plan, skipping`);
+        continue;
+      }
+
+      const periodStart = sub.nextInvoiceDate;
+      const periodEnd = this.computePeriodEnd(periodStart, plan.billingPeriod);
+      const issueDate = new Date();
+
+      const draft = this.invoiceBuilder.build(sub, plan, activeDiscounts, {
+        periodStart,
+        periodEnd,
+        issueDate,
+      });
+
+      // Assign invoice number.
+      const number = await this.counter.nextFormatted('INV', 'invoice');
+      draft.number = number;
+
+      drafts.push(draft);
+      subscriptionUpdates.push({
+        id: sub._id,
+        nextInvoiceDate: periodEnd,
+        lastBilledPeriodEnd: periodEnd,
+      });
+    }
+
+    // 5. Write the batch in one transaction.
+    try {
+      await this.txManager.run(async (session) => {
+        // Insert invoices.
+        if (drafts.length) {
+          await this.invoiceRepo.insertMany(drafts, { session });
+        }
+
+        // Claim discount usage and insert redemptions.
+        for (const draft of drafts) {
+          await this.claimDiscounts(draft, session);
+        }
+
+        // Advance nextInvoiceDate on all processed subscriptions.
+        await this.subscriptionRepo.bulkAdvance(subscriptionUpdates, session);
+      });
+
+      return { created: drafts.length, errors: 0 };
+    } catch (err) {
+      // 6. Failure handling — retry one subscription at a time.
+      console.warn(`[billing] batch failed (${err.message}), retrying individually`);
+      return this.retryIndividually(subscriptions, activeDiscounts, planCache);
+    }
+  }
+
+  async retryIndividually(subscriptions, activeDiscounts, planCache) {
+    let created = 0;
+    let errors = 0;
+
+    for (const sub of subscriptions) {
+      try {
+        const plan = planCache.get(sub.planId.toString());
+        if (!plan) { errors++; continue; }
+
+        const periodStart = sub.nextInvoiceDate;
+        const periodEnd = this.computePeriodEnd(periodStart, plan.billingPeriod);
+        const issueDate = new Date();
+
+        const draft = this.invoiceBuilder.build(sub, plan, activeDiscounts, {
+          periodStart, periodEnd, issueDate,
+        });
+
+        const number = await this.counter.nextFormatted('INV', 'invoice');
+        draft.number = number;
+
+        await this.txManager.run(async (session) => {
+          // Check if an invoice already exists for this period (unique index guard).
+          const existing = await this.invoiceRepo.findByPeriod(sub._id, periodStart, { session });
+          if (existing) return; // already billed — skip
+
+          await this.invoiceRepo.insertOne(draft, { session });
+          await this.claimDiscounts(draft, session);
+          await this.subscriptionRepo.bulkAdvance([{
+            id: sub._id,
+            nextInvoiceDate: periodEnd,
+            lastBilledPeriodEnd: periodEnd,
+          }], session);
+        });
+        created++;
+      } catch (err) {
+        console.error(`[billing] subscription ${sub._id} failed: ${err.message}`);
+        errors++;
+      }
+    }
+
+    return { created, errors };
+  }
+
+  /**
+   * Claim discount usage atomically and insert redemption records.
+   */
+  async claimDiscounts(draft, session) {
+    // Product-scope discounts.
+    for (const applied of (draft.appliedProductDiscountIds || [])) {
+      const claimed = await this.discountRepo.claimUsage(applied.discountId, session);
+      if (claimed) {
+        await this.discountRepo.addRedemption({
+          discountId: new ObjectId(applied.discountId),
+          invoiceId: draft._id,
+          amount: draft.lines.find((l) => l.productId?.toString() === applied.productId?.toString())?.discountAmount || 0,
+        }, session);
+      }
+    }
+
+    // Subscription-scope discount.
+    if (draft.appliedSubscriptionDiscountId) {
+      const claimed = await this.discountRepo.claimUsage(draft.appliedSubscriptionDiscountId, session);
+      if (claimed) {
+        await this.discountRepo.addRedemption({
+          discountId: new ObjectId(draft.appliedSubscriptionDiscountId),
+          invoiceId: draft._id,
+          amount: draft.discountTotal - draft.lines.reduce((s, l) => s + (l.discountAmount || 0), 0),
+        }, session);
+      }
+    }
+  }
+
+  /** Compute the end of the billing period. */
+  computePeriodEnd(periodStart, billingPeriod) {
+    const end = new Date(periodStart);
+    const days = PERIOD_DAYS[billingPeriod] || 30;
+    end.setDate(end.getDate() + days);
+    return end;
+  }
+}
