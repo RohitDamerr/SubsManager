@@ -83,6 +83,8 @@ export function Modal({ title, onClose, children, wide = false }) {
 export function QueryState({ query, isEmpty, empty, children }) {
   if (query.isLoading) return <Spinner />;
   if (query.isError) return <div className="card-body"><ErrorAlert error={query.error} fallback="Failed to load" /></div>;
-  if (isEmpty) return empty || <Empty />;
-  return children;
+  // While a new search/filter loads, the previous rows stay visible but dimmed.
+  const stale = query.isFetching && query.isPlaceholderData;
+  if (isEmpty) return <div className={stale ? 'is-stale' : ''}>{empty || <Empty />}</div>;
+  return <div className={stale ? 'is-stale' : ''} aria-busy={stale}>{children}</div>;
 }

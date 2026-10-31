@@ -195,6 +195,14 @@ Each backend module follows the same layering. Controllers only handle HTTP. Bus
 
 All endpoints are under `/api/v1` and use JSON with a `Authorization: Bearer <token>` header. Lists accept `limit` and `cursor` and return `{ data, nextCursor }`.
 
+Every list also takes `q` for search. Search text is always matched literally, never as a regex.
+
+- **Subscriptions and invoices:** number prefix (`42`, `SUB-42`) or customer name or email
+- **Payments:** invoice number or customer
+- **Catalog and team lists:** name, and email for staff
+
+In the UI, search text and filters are kept in the page URL (for example `/invoices?q=acme&status=CONFIRMED&from=2026-10-01`). A refresh or a shared link opens the same view.
+
 | Area | Endpoints |
 |---|---|
 | Auth | `POST /auth/register`, `/auth/login`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/change-password`; `GET /auth/me` |
