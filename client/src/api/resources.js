@@ -72,6 +72,7 @@ export const subscriptions = {
   get: (id) => api.get(`/subscriptions/${id}`).then(body),
   create: (b) => api.post('/subscriptions', b).then(body),
   transition: (id, to) => api.post(`/subscriptions/${id}/transition`, { to }).then(body),
+  renew: (id) => api.post(`/subscriptions/${id}/renew`).then(body),
 };
 
 // Invoices
@@ -87,6 +88,7 @@ export const invoices = {
 
 // Payments
 export const payments = {
+  register: (params) => api.get('/payments', { params }).then(page),
   list: (invoiceId) => api.get(`/invoices/${invoiceId}/payments`).then(body),
   record: (invoiceId, b) => api.post(`/invoices/${invoiceId}/payments`, b).then(body),
 };

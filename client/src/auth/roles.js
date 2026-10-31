@@ -17,6 +17,8 @@ export const ACCESS = {
   invoices: TEAM,
   myInvoices: [CUSTOMER],
   invoiceDetail: ALL,
+  payments: TEAM,
+  myPayments: [CUSTOMER],
   templates: TEAM,
   products: TEAM,               // staff read-only
   plans: TEAM,                  // staff read-only
@@ -36,6 +38,8 @@ const ROUTE_ACCESS = [
   ['/invoices', 'invoices'],
   ['/invoices/:id', 'invoiceDetail'],
   ['/my-invoices', 'myInvoices'],
+  ['/payments', 'payments'],
+  ['/my-payments', 'myPayments'],
   ['/templates', 'templates'],
   ['/products', 'products'],
   ['/plans', 'plans'],
@@ -55,6 +59,7 @@ const PERMISSIONS = {
   'invoice:manage': TEAM,            // confirm, cancel, send
   'payment:record': TEAM,
   'billing:run': [ADMIN],
+  'subscription:renew': TEAM,
   'staff:manage': [ADMIN],
 };
 
@@ -87,6 +92,8 @@ export const NAV = [
   { to: '/my-subscriptions', label: 'My Subscriptions', icon: '↻', access: 'mySubscriptions' },
   { to: '/invoices', label: 'Invoices', icon: '▤', access: 'invoices' },
   { to: '/my-invoices', label: 'My Invoices', icon: '▤', access: 'myInvoices' },
+  { to: '/payments', label: 'Payments', icon: '₹', access: 'payments' },
+  { to: '/my-payments', label: 'My Payments', icon: '₹', access: 'myPayments' },
   { to: '/templates', label: 'Quotation Templates', icon: '❐', access: 'templates' },
   { section: 'Catalog' },
   { to: '/products', label: 'Products', icon: '◫', access: 'products' },

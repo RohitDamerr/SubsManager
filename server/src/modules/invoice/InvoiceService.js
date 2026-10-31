@@ -60,7 +60,9 @@ export class InvoiceService {
 
     this.sm.assertCan(invoice.status, 'CONFIRMED');
 
-    const number = await this.counter.nextFormatted('INV', 'invoice');
+    // The billing run numbers invoices as it creates them; keep that number so the sequence
+    // has no gaps.  Only an invoice created without one gets a number here.
+    const number = invoice.number || await this.counter.nextFormatted('INV', 'invoice');
     const result = await this.invoiceRepo.transition(id, 'DRAFT', { number, status: 'CONFIRMED' });
     if (result.matchedCount === 0) {
       throw new ValidationError('Invoice state changed concurrently');

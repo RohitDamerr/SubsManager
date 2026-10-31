@@ -118,7 +118,7 @@ export class BillingService {
       drafts.push(draft);
       subscriptionUpdates.push({
         id: sub._id,
-        nextInvoiceDate: periodEnd,
+        nextInvoiceDate: this.nextAfter(sub, periodEnd),
         lastBilledPeriodEnd: periodEnd,
       });
     }
@@ -165,6 +165,11 @@ export class BillingService {
     }
   }
 
+  /** Next billing date after a billed period — none once the term is over. */
+  nextAfter(sub, periodEnd) {
+    return this.termEnded(sub, periodEnd) ? null : periodEnd;
+  }
+
   /** True when the period would start on/after the subscription's expiry. */
   termEnded(sub, periodStart) {
     return Boolean(sub.expiryDate && periodStart >= sub.expiryDate);
@@ -200,7 +205,7 @@ export class BillingService {
           const existing = await this.invoiceRepo.findByPeriod(sub._id, periodStart, { session });
           if (existing) {
             // Already billed — just move the subscription past this period so it isn't due again.
-            await this.subscriptionRepo.bulkAdvance([{ id: sub._id, nextInvoiceDate: periodEnd, lastBilledPeriodEnd: periodEnd }], session);
+            await this.subscriptionRepo.bulkAdvance([{ id: sub._id, nextInvoiceDate: this.nextAfter(sub, periodEnd), lastBilledPeriodEnd: periodEnd }], session);
             return;
           }
 
@@ -208,7 +213,7 @@ export class BillingService {
           await this.claimDiscounts(draft, session);
           await this.subscriptionRepo.bulkAdvance([{
             id: sub._id,
-            nextInvoiceDate: periodEnd,
+            nextInvoiceDate: this.nextAfter(sub, periodEnd),
             lastBilledPeriodEnd: periodEnd,
           }], session);
         });

@@ -16,12 +16,23 @@ import { addDays, dateInput, formatDate, PERIOD_LABEL } from '../../lib/format.j
 
 const STATUSES = ['', 'DRAFT', 'QUOTATION', 'CONFIRMED', 'ACTIVE', 'PAUSED', 'CLOSED'];
 
+// Plans can only be sold inside their availability window (the API enforces this too).
+function planAvailable(p) {
+  const now = new Date();
+  return (!p.availableFrom || new Date(p.availableFrom) <= now) && (!p.availableTo || new Date(p.availableTo) >= now);
+}
+
 export default function Subscriptions() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [status, setStatus] = useState('');
+  const [q, setQ] = useState('');
+  const [customerId, setCustomerId] = useState('');
   const [creating, setCreating] = useState(false);
-  const list = useCursorList(['subscriptions', 'all'], subscriptions.list, { limit: 20, ...(status ? { status } : {}) });
+  const customersQ = useQuery({ queryKey: ['customers'], queryFn: () => customers.list({ limit: 200 }) });
+  const list = useCursorList(['subscriptions', 'all'], subscriptions.list, {
+    limit: 20, ...(status ? { status } : {}), ...(q.trim() ? { q: q.trim() } : {}), ...(customerId ? { customerId } : {}),
+  });
 
   return (
     <div>
@@ -43,7 +54,14 @@ export default function Subscriptions() {
           </div>
         }
       >
-        <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title="No subscriptions">{status ? 'Nothing in this state.' : 'Create the first one to start billing.'}</Empty>}>
+        <div className="card-body filters" style={{ borderBottom: '1px solid var(--border)', paddingBlock: 12 }}>
+          <input className="search" placeholder="Search number, e.g. 42" value={q} onChange={(e) => setQ(e.target.value)} />
+          <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} style={{ width: 240 }}>
+            <option value="">All customers</option>
+            {(customersQ.data || []).map((c) => <option key={c._id} value={c._id}>{c.companyName || c.name}</option>)}
+          </select>
+        </div>
+        <QueryState query={list} isEmpty={!list.rows.length} empty={<Empty title="No subscriptions">{status || q || customerId ? 'Nothing matches these filters.' : 'Create the first one to start billing.'}</Empty>}>
           <DataTable
             data={list.rows}
             onRowClick={(s) => navigate(`/subscriptions/${s._id}`)}
@@ -129,7 +147,7 @@ function CreateSubscription({ onClose, onCreated }) {
           <Field label="Plan">
             <select value={form.planId} onChange={set('planId')} required>
               <option value="">Select plan…</option>
-              {(plansQ.data?.data || []).map((p) => <option key={p._id} value={p._id}>{p.name} ({PERIOD_LABEL[p.billingPeriod]})</option>)}
+              {(plansQ.data?.data || []).filter(planAvailable).map((p) => <option key={p._id} value={p._id}>{p.name} ({PERIOD_LABEL[p.billingPeriod]})</option>)}
             </select>
           </Field>
         </div>

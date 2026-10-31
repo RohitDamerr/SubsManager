@@ -152,6 +152,22 @@ td:has(> .chip) { white-space: normal; min-width: 160px; }
 .tab:hover { background: var(--surface-2); color: var(--text); }
 .tab.active { background: var(--primary-soft); color: var(--primary); border-color: #c7d2fe; }
 
+.filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 400; }
+.filters input, .filters select { padding: 6px 10px; font-size: 13px; }
+.search { width: 200px; }
+
+/* ---------- Lifecycle stepper ---------- */
+.stepper { display: flex; align-items: center; margin-bottom: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; overflow-x: auto; }
+.step { display: flex; align-items: center; gap: 8px; color: var(--text-subtle); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.step-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border-strong); display: grid; place-items: center; font-size: 11px; background: var(--surface); }
+.step.done { color: var(--text-muted); }
+.step.done .step-dot { background: var(--primary); border-color: var(--primary); color: #fff; }
+.step.current { color: var(--text); font-weight: 600; }
+.step.current .step-dot { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft); color: var(--primary); }
+.step.current.paused .step-dot { border-color: var(--warning); box-shadow: 0 0 0 4px var(--warning-soft); color: var(--warning); }
+.step-line { flex: 1; min-width: 24px; height: 2px; background: var(--border); margin: 0 10px; }
+.step-line.done { background: var(--primary); }
+
 /* ---------- KPI ---------- */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }

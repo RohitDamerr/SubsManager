@@ -24,6 +24,7 @@ import PortalHome from './pages/portal/PortalHome.jsx';
 import MySubscriptions from './pages/portal/MySubscriptions.jsx';
 import MyInvoices from './pages/portal/MyInvoices.jsx';
 import Account from './pages/account/Account.jsx';
+import Payments from './pages/staff/Payments.jsx';
 
 const guarded = (key, element) => ({ key, element });
 
@@ -36,6 +37,8 @@ const PAGES = [
   ['/invoices', guarded('invoices', <Invoices />)],
   ['/invoices/:id', guarded('invoiceDetail', <InvoiceDetail />)],
   ['/my-invoices', guarded('myInvoices', <MyInvoices />)],
+  ['/payments', guarded('payments', <Payments />)],
+  ['/my-payments', guarded('myPayments', <Payments />)],
   ['/templates', guarded('templates', <Templates />)],
   ['/products', guarded('products', <Products />)],
   ['/plans', guarded('plans', <Plans />)],

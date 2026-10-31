@@ -1,6 +1,9 @@
 // ReportRepository — read-only aggregations, all hitting indexes.
 import { ObjectId } from 'mongodb';
 
+// Group revenue by the business's local day/month, not UTC (an IST payment at 00:30 is "today").
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 export class ReportRepository {
   constructor(db) {
     this.db = db;
@@ -87,8 +90,8 @@ export class ReportRepository {
   /** Revenue time series grouped by month. */
   async revenueSeries(from, to, groupBy = 'month') {
     const fmt = groupBy === 'day'
-      ? { $dateToString: { format: '%Y-%m-%d', date: '$paidOn' } }
-      : { $dateToString: { format: '%Y-%m', date: '$paidOn' } };
+      ? { $dateToString: { format: '%Y-%m-%d', date: '$paidOn', timezone: TZ } }
+      : { $dateToString: { format: '%Y-%m', date: '$paidOn', timezone: TZ } };
 
     return this.payments.aggregate([
       { $match: { paidOn: { $gte: from, $lte: to } } },

@@ -8,7 +8,7 @@ import { DataTable } from '../../components/DataTable.jsx';
 import { MoneyText } from '../../components/MoneyText.jsx';
 import { Card, Empty, ErrorAlert, Field, Modal, PageHeader, QueryState } from '../../components/ui.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { fromPaise, PERIOD_LABEL, toPaise } from '../../lib/format.js';
+import { dateInput, formatDate, fromPaise, PERIOD_LABEL, toPaise } from '../../lib/format.js';
 
 const FLAGS = [
   ['allowPause', 'Customers can pause'],
@@ -16,6 +16,18 @@ const FLAGS = [
   ['allowRenew', 'Can renew'],
   ['autoClose', 'Auto-close at expiry'],
 ];
+
+function availability(p) {
+  if (!p.availableFrom && !p.availableTo) return <span className="muted">Always</span>;
+  const now = new Date();
+  const live = (!p.availableFrom || new Date(p.availableFrom) <= now) && (!p.availableTo || new Date(p.availableTo) >= now);
+  return (
+    <>
+      <span className={`badge badge-${live ? 'green' : 'gray'}`}>{live ? 'On sale' : 'Not on sale'}</span>
+      <div className="subtle">{p.availableFrom ? formatDate(p.availableFrom) : 'Any time'} – {p.availableTo ? formatDate(p.availableTo) : 'no end'}</div>
+    </>
+  );
+}
 
 export default function Plans() {
   const { user } = useAuth();
@@ -41,6 +53,7 @@ export default function Plans() {
               { key: 'period', label: 'Billing', render: (p) => PERIOD_LABEL[p.billingPeriod] },
               { key: 'minQuantity', label: 'Min qty', align: 'right', render: (p) => p.minQuantity || 0 },
               { key: 'flags', label: 'Rules', render: (p) => FLAGS.filter(([k]) => p[k]).map(([k, l]) => <span key={k} className="chip">{l}</span>) },
+              { key: 'available', label: 'Available', render: (p) => availability(p) },
               { key: 'price', label: 'Price', align: 'right', render: (p) => <MoneyText amount={p.price} /> },
             ]}
           />
@@ -63,6 +76,8 @@ function PlanForm({ plan, onClose }) {
     allowEarlyClose: plan?.allowEarlyClose ?? true,
     allowRenew: plan?.allowRenew ?? true,
     autoClose: plan?.autoClose ?? false,
+    availableFrom: plan?.availableFrom ? dateInput(plan.availableFrom) : '',
+    availableTo: plan?.availableTo ? dateInput(plan.availableTo) : '',
   });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -73,7 +88,11 @@ function PlanForm({ plan, onClose }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    save.mutate({ ...form, price: toPaise(form.price) ?? 0, minQuantity: Number(form.minQuantity) || 0 });
+    const { availableFrom, availableTo, ...rest } = form;
+    const b = { ...rest, price: toPaise(form.price) ?? 0, minQuantity: Number(form.minQuantity) || 0 };
+    if (availableFrom) b.availableFrom = new Date(availableFrom).toISOString();
+    if (availableTo) b.availableTo = new Date(`${availableTo}T23:59:59`).toISOString();
+    save.mutate(b);
   };
 
   return (
@@ -89,6 +108,10 @@ function PlanForm({ plan, onClose }) {
           </Field>
           <Field label="Price (₹)"><input type="number" step="0.01" min="0" value={form.price} onChange={set('price')} required /></Field>
           <Field label="Minimum quantity"><input type="number" min="0" value={form.minQuantity} onChange={set('minQuantity')} /></Field>
+        </div>
+        <div className="form-grid">
+          <Field label="Available from" hint="Blank = already on sale"><input type="date" value={form.availableFrom} onChange={set('availableFrom')} /></Field>
+          <Field label="Available until" hint="Blank = no end date"><input type="date" value={form.availableTo} min={form.availableFrom || undefined} onChange={set('availableTo')} /></Field>
         </div>
         <Field label="Rules">
           {FLAGS.map(([k, l]) => (

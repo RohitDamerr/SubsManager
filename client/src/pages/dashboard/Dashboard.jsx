@@ -1,6 +1,6 @@
 // Finance dashboard — Admin & Staff.  One summary call for the KPI cards (server runs the
 // aggregations in parallel), a 12-month revenue series, and the overdue list.
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { reports, billing } from '../../api/resources.js';
@@ -12,17 +12,36 @@ import { BarChart } from '../../components/BarChart.jsx';
 import { DataTable } from '../../components/DataTable.jsx';
 import { Card, Empty, ErrorAlert, PageHeader, QueryState, Spinner } from '../../components/ui.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { formatDate, formatMoney } from '../../lib/format.js';
+import { DateRange } from '../../components/DateRange.jsx';
+import { METHOD_LABEL } from '../staff/Payments.jsx';
+import { dateInput, formatDate, formatMoney } from '../../lib/format.js';
+
+const pad = (n) => String(n).padStart(2, '0');
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Chart buckets for a range: days when it spans ≤ 62 days, months otherwise (matches the API's groupBy). */
+function buckets(from, to) {
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  if ((end - start) / DAY_MS <= 62) {
+    const out = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      out.push({ period: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, label: String(d.getDate()) });
+    }
+    return { groupBy: 'day', items: out };
+  }
+  const out = [];
+  for (let d = new Date(start.getFullYear(), start.getMonth(), 1); d <= end; d.setMonth(d.getMonth() + 1)) {
+    out.push({ period: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, label: d.toLocaleDateString('en-IN', { month: 'short' }) });
+  }
+  return { groupBy: 'month', items: out };
+}
+
+const RANGE_PRESETS = [['month', 'This month'], ['lastMonth', 'Last month'], ['quarter', 'This quarter'], ['year', 'This year']];
 
 function last12Months() {
   const now = new Date();
-  return Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1);
-    return {
-      period: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-      label: d.toLocaleDateString('en-IN', { month: 'short' }),
-    };
-  });
+  return { from: dateInput(new Date(now.getFullYear(), now.getMonth() - 11, 1)), to: dateInput(now) };
 }
 
 export default function Dashboard() {
@@ -30,12 +49,16 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const months = useMemo(last12Months, []);
+  const [range, setRange] = useState(last12Months);
+  // An open-ended range (cleared dates) falls back to the last 12 months.
+  const effective = { from: range.from || last12Months().from, to: range.to || dateInput(new Date()) };
+  const chart = useMemo(() => buckets(effective.from, effective.to), [effective.from, effective.to]);
 
   const summary = useQuery({ queryKey: ['reports', 'summary'], queryFn: reports.summary });
   const revenue = useQuery({
-    queryKey: ['reports', 'revenue', months[0].period],
-    queryFn: () => reports.revenue({ from: `${months[0].period}-01`, groupBy: 'month' }),
+    queryKey: ['reports', 'revenue', effective.from, effective.to, chart.groupBy],
+    queryFn: () => reports.revenue({ from: effective.from, to: effective.to, groupBy: chart.groupBy }),
+    placeholderData: (prev) => prev,
   });
   const overdue = useQuery({ queryKey: ['reports', 'overdue'], queryFn: () => reports.overdue({ limit: 10 }) });
 
@@ -52,8 +75,8 @@ export default function Dashboard() {
 
   const series = useMemo(() => {
     const byPeriod = new Map((revenue.data?.series || []).map((s) => [s.period, s.total]));
-    return months.map((m) => ({ ...m, total: byPeriod.get(m.period) || 0 }));
-  }, [revenue.data, months]);
+    return chart.items.map((m) => ({ ...m, total: byPeriod.get(m.period) || 0 }));
+  }, [revenue.data, chart]);
 
   const s = summary.data;
 
@@ -79,19 +102,39 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid-2">
-        <Card title="Revenue received — last 12 months" actions={revenue.data && <span className="muted">Total {formatMoney(revenue.data.total)}</span>}>
-          {revenue.isLoading ? <Spinner /> : revenue.isError ? <ErrorAlert error={revenue.error} /> : <BarChart series={series} />}
-        </Card>
-
-        <Card title="Quick links">
-          <div style={{ display: 'grid', gap: 8 }}>
-            <button className="secondary" onClick={() => navigate('/subscriptions')}>Subscriptions</button>
-            <button className="secondary" onClick={() => navigate('/invoices?status=DRAFT')}>Draft invoices to confirm</button>
-            <button className="secondary" onClick={() => navigate('/invoices?overdue=true')}>Overdue invoices</button>
+      <Card
+        title="Revenue received"
+        actions={<DateRange value={range} onChange={setRange} presets={[['12m', 'Last 12 months'], ...RANGE_PRESETS]} />}
+        bodyless
+      >
+        <div className="grid-2" style={{ padding: 18, marginBottom: 0 }}>
+          <div>
+            <div className="kpi-label">{formatDate(effective.from)} – {formatDate(effective.to)}</div>
+            <div className="kpi-value" style={{ marginBottom: 8 }}>{revenue.data ? formatMoney(revenue.data.total) : '…'}</div>
+            {revenue.isLoading ? <Spinner /> : revenue.isError ? <ErrorAlert error={revenue.error} /> : <BarChart series={series} />}
           </div>
-        </Card>
-      </div>
+          <div>
+            <div className="kpi-label" style={{ marginBottom: 8 }}>By payment method</div>
+            {revenue.data?.byMethod?.length ? (
+              <table>
+                <tbody>
+                  {revenue.data.byMethod.map((m) => (
+                    <tr key={m.method}>
+                      <td>{METHOD_LABEL[m.method] || m.method}<div className="subtle">{m.count} payment(s)</div></td>
+                      <td className="num strong">{formatMoney(m.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : <div className="muted">No payments in this range.</div>}
+            <div style={{ display: 'grid', gap: 8, marginTop: 16 }}>
+              <button className="secondary" onClick={() => navigate('/payments')}>All payments</button>
+              <button className="secondary" onClick={() => navigate('/invoices?status=DRAFT')}>Draft invoices to confirm</button>
+              <button className="secondary" onClick={() => navigate('/invoices?overdue=true')}>Overdue invoices</button>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <Card title="Overdue invoices" bodyless>
         <QueryState query={overdue} isEmpty={!overdue.data?.length} empty={<Empty title="No overdue invoices">Everything confirmed is within its due date.</Empty>}>
