@@ -113,9 +113,8 @@ export class InvoiceService {
 
     if (invoice.status === 'DRAFT') throw new ValidationError('Confirm the invoice before sending');
 
-    const db = this.invoiceRepo.col.client.db();
-    const customer = await db.collection('customers').findOne({ _id: new ObjectId(invoice.customerId) });
-    const user = customer ? await db.collection('users').findOne({ _id: customer.userId }) : null;
+    const customer = await this.customerRepo.findById(invoice.customerId);
+    const user = customer ? await this.userRepo.findById(customer.userId) : null;
     if (!user) throw new NotFoundError('Customer user');
 
     if (this.mailer) {

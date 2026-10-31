@@ -10,9 +10,10 @@ export class PaymentService {
   /**
    * @param {{ paymentRepo, invoiceRepo, txManager, eventBus }} deps
    */
-  constructor({ paymentRepo, invoiceRepo, txManager, eventBus }) {
+  constructor({ paymentRepo, invoiceRepo, customerRepo, txManager, eventBus }) {
     this.paymentRepo = paymentRepo;
     this.invoiceRepo = invoiceRepo;
+    this.customerRepo = customerRepo;
     this.txManager = txManager;
     this.eventBus = eventBus;
   }
@@ -68,8 +69,7 @@ export class PaymentService {
 
   async assertCanAccess(invoice, actor) {
     if (actor.role === 'CUSTOMER') {
-      const db = this.invoiceRepo.col.client.db();
-      const customer = await db.collection('customers').findOne({ userId: actor._id });
+      const customer = await this.customerRepo.findByUserId(actor._id);
       if (!customer || customer._id.toString() !== invoice.customerId.toString()) {
         throw new ForbiddenError('You can only access your own invoices');
       }

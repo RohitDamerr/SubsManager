@@ -91,14 +91,14 @@ export function buildContainer() {
   const discountService = new DiscountService({ discountRepo, txManager });
   const templateService = new QuotationTemplateService({ templateRepo });
   const subscriptionService = new SubscriptionService({
-    subscriptionRepo, planRepo, templateRepo, productRepo, taxRepo,
+    subscriptionRepo, planRepo, templateRepo, productRepo, taxRepo, customerRepo,
     txManager, eventBus, subscriptionStateMachine,
   });
   const invoiceService = new InvoiceService({
-    invoiceRepo, subscriptionRepo, discountRepo, txManager, eventBus, invoiceStateMachine, mailer,
+    invoiceRepo, subscriptionRepo, discountRepo, customerRepo, userRepo, txManager, eventBus, invoiceStateMachine, mailer,
   });
   const paymentService = new PaymentService({
-    paymentRepo, invoiceRepo, txManager, eventBus,
+    paymentRepo, invoiceRepo, customerRepo, txManager, eventBus,
   });
   const billingLock = new BillingLock(db);
   const billingService = new BillingService({
