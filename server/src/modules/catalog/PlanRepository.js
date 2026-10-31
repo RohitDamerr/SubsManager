@@ -1,7 +1,6 @@
 // PlanRepository — plans collection access.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
-import { encodeCursor } from '../../core/Pagination.js';
 
 export class PlanRepository extends BaseRepository {
   constructor(db) { super(db, 'plans'); }

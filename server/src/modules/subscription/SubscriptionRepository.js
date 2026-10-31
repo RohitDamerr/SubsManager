@@ -1,7 +1,7 @@
 // SubscriptionRepository — subscriptions with lines embedded.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
-import { keysetFilter, encodeCursor } from '../../core/Pagination.js';
+import { keysetFilter } from '../../core/Pagination.js';
 
 export class SubscriptionRepository extends BaseRepository {
   constructor(db) { super(db, 'subscriptions'); }

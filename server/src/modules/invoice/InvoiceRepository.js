@@ -1,7 +1,7 @@
 // InvoiceRepository — invoices with lines embedded.
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
-import { keysetFilter, encodeCursor } from '../../core/Pagination.js';
+import { keysetFilter } from '../../core/Pagination.js';
 
 export class InvoiceRepository extends BaseRepository {
   constructor(db) { super(db, 'invoices'); }
