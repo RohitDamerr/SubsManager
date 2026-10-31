@@ -5,7 +5,7 @@ import { keysetFilter } from '../../core/Pagination.js';
 
 /** "12" or "sub-12" → prefix match on the unique number index (e.g. ^SUB-000012). */
 export function numberPrefix(q, prefix) {
-  const digits = String(q).toUpperCase().replace(new RegExp(`^${prefix}-?`), '').replace(/D/g, '');
+  const digits = String(q).toUpperCase().replace(new RegExp(`^${prefix}-?`), '').replace(/\D/g, '');
   if (!digits) return { $regex: `^${prefix}-` };
   return { $regex: `^${prefix}-0*${digits}` };
 }

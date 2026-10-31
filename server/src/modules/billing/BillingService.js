@@ -110,9 +110,10 @@ export class BillingService {
         issueDate,
       });
 
-      // Assign invoice number.
+      // Assign invoice number, and the _id up front so discount redemptions can reference it.
       const number = await this.counter.nextFormatted('INV', 'invoice');
       draft.number = number;
+      draft._id = new ObjectId();
 
       drafts.push(draft);
       subscriptionUpdates.push({
@@ -192,6 +193,7 @@ export class BillingService {
 
         const number = await this.counter.nextFormatted('INV', 'invoice');
         draft.number = number;
+        draft._id = new ObjectId();
 
         await this.txManager.run(async (session) => {
           // Check if an invoice already exists for this period (unique index guard).

@@ -136,46 +136,79 @@ export class InvoiceService {
     return this.invoiceRepo.findById(id);
   }
 
-  /** Generate printable HTML. */
+  /** Generate printable HTML (customer details + lines + totals).  All text is escaped. */
   buildPrintHTML(invoice) {
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const money = (p) => '₹' + ((p || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const date = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
     const rows = (invoice.lines || []).map((l) => `
       <tr>
-        <td>${l.description || ''}</td>
-        <td style="text-align:right">${l.quantity || 0}</td>
-        <td style="text-align:right">${(l.unitPrice / 100).toFixed(2)}</td>
-        <td style="text-align:right">${(l.discountAmount / 100).toFixed(2)}</td>
-        <td style="text-align:right">${(l.taxAmount / 100).toFixed(2)}</td>
-        <td style="text-align:right">${(l.lineTotal / 100).toFixed(2)}</td>
+        <td>${esc(l.description)}</td>
+        <td class="n">${l.quantity || 0}</td>
+        <td class="n">${money(l.unitPrice)}</td>
+        <td class="n">${l.discountAmount ? '−' + money(l.discountAmount) : '—'}</td>
+        <td class="n">${money(l.taxAmount)} <small>(${l.taxRate || 0}%)</small></td>
+        <td class="n">${money(l.lineTotal)}</td>
       </tr>`).join('');
+    const balance = invoice.status === 'CANCELLED' ? 0 : invoice.total - invoice.amountPaid;
 
     return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Invoice ${invoice.number || ''}</title>
+<html><head><meta charset="utf-8"><title>Invoice ${esc(invoice.number || 'Draft')}</title>
 <style>
-  body { font-family: sans-serif; margin: 40px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-  th, td { padding: 8px 12px; border-bottom: 1px solid #ddd; }
-  th { text-align: left; background: #f5f5f5; }
-  .totals { margin-top: 20px; float: right; }
-  .totals div { margin: 4px 0; display: flex; justify-content: space-between; width: 250px; }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 40px; color: #111827; font-size: 14px; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+  .brand { font-size: 22px; font-weight: 700; color: #4f46e5; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  .muted { color: #6b7280; }
+  .status { display: inline-block; padding: 2px 10px; border-radius: 999px; background: #eef2ff; color: #4338ca; font-weight: 600; font-size: 12px; }
+  .parties { display: flex; gap: 48px; margin-bottom: 24px; }
+  .parties div { min-width: 200px; }
+  .label { text-transform: uppercase; font-size: 11px; letter-spacing: .05em; color: #6b7280; margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 9px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  th { background: #f9fafb; font-size: 12px; text-transform: uppercase; color: #6b7280; }
+  .n { text-align: right; white-space: nowrap; }
+  .totals { margin: 20px 0 0 auto; width: 300px; }
+  .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+  .totals .grand { border-top: 2px solid #111827; margin-top: 6px; padding-top: 8px; font-weight: 700; font-size: 16px; }
+  @media print { body { margin: 16mm; } }
 </style></head>
 <body>
-  <h1>Invoice ${invoice.number || ''}</h1>
-  <p>Date: ${invoice.issueDate?.toISOString?.().slice(0, 10) || ''}</p>
-  <p>Due: ${invoice.dueDate?.toISOString?.().slice(0, 10) || ''}</p>
-  <p>Status: ${invoice.status}</p>
+  <div class="top">
+    <div><div class="brand">Brightloop Software</div><div class="muted">Subscription billing</div></div>
+    <div style="text-align:right">
+      <h1>Invoice ${esc(invoice.number || '(draft)')}</h1>
+      <span class="status">${esc(invoice.status)}</span>
+    </div>
+  </div>
+  <div class="parties">
+    <div>
+      <div class="label">Bill to</div>
+      <strong>${esc(invoice.customerName || 'Customer')}</strong><br>
+      ${invoice.customerEmail ? esc(invoice.customerEmail) + '<br>' : ''}
+      ${invoice.billingAddress ? esc(invoice.billingAddress).replace(/\n/g, '<br>') : ''}
+    </div>
+    <div>
+      <div class="label">Details</div>
+      Issued: ${date(invoice.issueDate)}<br>
+      Due: ${date(invoice.dueDate)}<br>
+      Period: ${date(invoice.periodStart)} – ${date(invoice.periodEnd)}
+      ${invoice.subscriptionNumber ? '<br>Subscription: ' + esc(invoice.subscriptionNumber) : ''}
+    </div>
+  </div>
   <table>
-    <thead><tr>
-      <th>Description</th><th>Qty</th><th>Unit Price</th><th>Discount</th><th>Tax</th><th>Total</th>
-    </tr></thead>
+    <thead><tr><th>Description</th><th class="n">Qty</th><th class="n">Unit price</th><th class="n">Discount</th><th class="n">Tax</th><th class="n">Total</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="totals">
-    <div><span>Subtotal:</span><span>${(invoice.subtotal / 100).toFixed(2)}</span></div>
-    <div><span>Discount:</span><span>-${(invoice.discountTotal / 100).toFixed(2)}</span></div>
-    <div><span>Tax:</span><span>${(invoice.taxTotal / 100).toFixed(2)}</span></div>
-    <div><strong><span>Total:</span><span>${(invoice.total / 100).toFixed(2)}</span></strong></div>
-    <div><span>Paid:</span><span>${(invoice.amountPaid / 100).toFixed(2)}</span></div>
+    <div><span>Subtotal</span><span>${money(invoice.subtotal)}</span></div>
+    <div><span>Discount</span><span>−${money(invoice.discountTotal)}</span></div>
+    <div><span>Tax</span><span>${money(invoice.taxTotal)}</span></div>
+    <div class="grand"><span>Total</span><span>${money(invoice.total)}</span></div>
+    <div><span>Paid</span><span>${money(invoice.amountPaid)}</span></div>
+    <div><strong>Balance due</strong><strong>${money(balance)}</strong></div>
   </div>
+  <script>window.onload = () => window.print();</script>
 </body></html>`;
   }
 

@@ -41,6 +41,7 @@ export function createApp(routers) {
   app.use('/api/v1/subscriptions', routers.subscriptions);
   app.use('/api/v1/invoices', routers.invoices);
   app.use('/api/v1/invoices', routers.payments); // nested /:id/payments
+  app.use('/api/v1/payments', routers.paymentList);
   app.use('/api/v1/billing', routers.billing);
   app.use('/api/v1/reports', routers.reports);
 

@@ -74,6 +74,16 @@ export class ReportRepository {
     return result[0]?.total || 0;
   }
 
+  /** Revenue in a period split by payment method — same paidOn index. */
+  async revenueByMethod(from, to) {
+    return this.payments.aggregate([
+      { $match: { paidOn: { $gte: from, $lte: to } } },
+      { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      { $sort: { total: -1 } },
+      { $project: { method: '$_id', total: 1, count: 1, _id: 0 } },
+    ]).toArray();
+  }
+
   /** Revenue time series grouped by month. */
   async revenueSeries(from, to, groupBy = 'month') {
     const fmt = groupBy === 'day'

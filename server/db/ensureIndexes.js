@@ -49,6 +49,10 @@ export async function ensureIndexes() {
   );
   await db.collection('subscriptions').createIndex({ number: 1 }, { unique: true });
   await db.collection('subscriptions').createIndex({ customerId: 1, status: 1, _id: -1 });
+  // List pages sort newest first, optionally by status or customer — keep those as index scans.
+  await db.collection('subscriptions').createIndex({ createdAt: -1, _id: -1 });
+  await db.collection('subscriptions').createIndex({ status: 1, createdAt: -1, _id: -1 });
+  await db.collection('subscriptions').createIndex({ customerId: 1, createdAt: -1, _id: -1 });
 
   // Invoices
   // No double billing: a cancelled invoice sets billable=false so its period can be billed again.
@@ -65,10 +69,12 @@ export async function ensureIndexes() {
     { partialFilterExpression: { status: 'CONFIRMED' } }
   );
   await db.collection('invoices').createIndex({ subscriptionId: 1 });
+  await db.collection('invoices').createIndex({ issueDate: -1, _id: -1 });
 
   // Payments
   await db.collection('payments').createIndex({ invoiceId: 1 });
   await db.collection('payments').createIndex({ paidOn: 1 });
+  await db.collection('payments').createIndex({ paidOn: -1, _id: -1 });
   await db.collection('payments').createIndex({ customerId: 1, paidOn: -1 });
 
   // Locks — TTL index frees a lock left behind by a crash.

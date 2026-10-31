@@ -2,12 +2,19 @@
 import { ObjectId } from 'mongodb';
 import { BaseRepository } from '../../core/BaseRepository.js';
 import { keysetFilter } from '../../core/Pagination.js';
+import { numberPrefix } from '../subscription/SubscriptionRepository.js';
 
 export class InvoiceRepository extends BaseRepository {
   constructor(db) { super(db, 'invoices'); }
 
-  async list({ limit = 20, cursor, status, customerId, overdue, excludeDraft } = {}) {
+  async list({ limit = 20, cursor, status, customerId, overdue, excludeDraft, q, from, to } = {}) {
     const filter = {};
+    if (q) filter.number = numberPrefix(q, 'INV');
+    if (from || to) {
+      filter.issueDate = {};
+      if (from) filter.issueDate.$gte = new Date(from);
+      if (to) filter.issueDate.$lte = new Date(new Date(to).getTime() + 24 * 60 * 60 * 1000 - 1); // inclusive day
+    }
     if (status) filter.status = status;
     else if (excludeDraft) filter.status = { $ne: 'DRAFT' };
     if (customerId) filter.customerId = new ObjectId(customerId);
@@ -16,10 +23,11 @@ export class InvoiceRepository extends BaseRepository {
       filter.dueDate = { $lt: new Date() };
     }
 
+    // The keyset $or must be ANDed with the date range, not merged over it.
     const keyset = keysetFilter(cursor, 'issueDate');
-    if (keyset) Object.assign(filter, keyset);
+    const query = keyset ? { $and: [filter, keyset] } : filter;
 
-    return this.col.find(filter)
+    return this.col.find(query, { projection: { lines: 0 } })
       .sort({ issueDate: -1, _id: -1 })
       .limit(limit + 1)
       .toArray();

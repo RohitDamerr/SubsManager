@@ -6,4 +6,7 @@ export const invoiceQuerySchema = z.object({
   status: z.string().optional(),
   customerId: z.string().optional(),
   overdue: z.enum(['true', 'false']).optional(),
+  q: z.string().max(40).optional(),          // invoice number search
+  from: z.coerce.date().optional(),          // issue date range
+  to: z.coerce.date().optional(),
 });

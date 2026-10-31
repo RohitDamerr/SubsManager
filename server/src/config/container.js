@@ -44,7 +44,7 @@ import { createInvoiceRouter } from '../modules/invoice/invoice.routes.js';
 import { PaymentRepository } from '../modules/payment/PaymentRepository.js';
 import { PaymentService } from '../modules/payment/PaymentService.js';
 import { PaymentController } from '../modules/payment/PaymentController.js';
-import { createPaymentRouter } from '../modules/payment/payment.routes.js';
+import { createPaymentRouter, createPaymentListRouter } from '../modules/payment/payment.routes.js';
 import { BillingLock } from '../modules/billing/BillingLock.js';
 import { BillingService } from '../modules/billing/BillingService.js';
 import { BillingController } from '../modules/billing/BillingController.js';
@@ -131,6 +131,7 @@ export function buildContainer() {
     subscriptions: createSubscriptionRouter({ subscriptionController }),
     invoices: createInvoiceRouter({ invoiceController }),
     payments: createPaymentRouter({ paymentController }),
+    paymentList: createPaymentListRouter({ paymentController }),
     billing: createBillingRouter({ billingController }),
     reports: createReportRouter({ reportController }),
   };

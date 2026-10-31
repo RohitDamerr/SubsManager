@@ -2,8 +2,8 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/authenticate.js';
 import { authorize } from '../../middleware/authorize.js';
-import { validateBody } from '../../middleware/validate.js';
-import { recordPaymentSchema } from './schemas.js';
+import { validateBody, validateQuery } from '../../middleware/validate.js';
+import { recordPaymentSchema, paymentQuerySchema } from './schemas.js';
 
 export function createPaymentRouter({ paymentController }) {
   const router = Router();
@@ -16,5 +16,13 @@ export function createPaymentRouter({ paymentController }) {
   router.post('/:id/payments', authenticate, authorize('ADMIN', 'STAFF'),
     validateBody(recordPaymentSchema), paymentController.record);
 
+  return router;
+}
+
+// Payments register — mounted under /api/v1/payments.  Staff, Admin; Customer sees own.
+export function createPaymentListRouter({ paymentController }) {
+  const router = Router();
+  router.get('/', authenticate, authorize('ADMIN', 'STAFF', 'CUSTOMER'),
+    validateQuery(paymentQuerySchema), paymentController.list);
   return router;
 }

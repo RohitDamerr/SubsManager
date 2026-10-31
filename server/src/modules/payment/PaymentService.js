@@ -18,6 +18,20 @@ export class PaymentService {
     this.eventBus = eventBus;
   }
 
+  /** Payments register; customers only ever see their own. */
+  async list(query, actor) {
+    const limit = Number(query.limit) || 20;
+    const filter = { ...query, limit };
+    if (actor.role === 'CUSTOMER') {
+      const customer = await this.customerRepo.findByUserId(actor._id);
+      if (!customer) return { data: [], hasMore: false, summary: { total: 0, count: 0 } };
+      filter.customerId = customer._id.toString();
+    }
+    const [rows, summary] = await Promise.all([this.paymentRepo.list(filter), this.paymentRepo.total(filter)]);
+    const hasMore = rows.length > limit;
+    return { data: hasMore ? rows.slice(0, limit) : rows, hasMore, summary };
+  }
+
   async listByInvoice(invoiceId, actor) {
     const invoice = await this.invoiceRepo.findById(invoiceId);
     if (!invoice) throw new NotFoundError('Invoice');
